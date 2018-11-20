@@ -95,6 +95,8 @@
 #ssl_key_file = 'server.key'		# (change requires restart)
 #ssl_ca_file = ''			# (change requires restart)
 #ssl_crl_file = ''			# (change requires restart)
+#ssl_min_protocol_version = 'TLSv1'
+#ssl_max_protocol_version = ''
 #password_encryption = on
 #db_user_namespace = off
 
@@ -111,7 +113,6 @@
 					# 0 selects the system default
 #tcp_keepalives_count = 0		# TCP_KEEPCNT;
 					# 0 selects the system default
-
 
 #------------------------------------------------------------------------------
 # RESOURCE USAGE (except WAL)

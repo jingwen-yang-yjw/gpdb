@@ -75,4 +75,17 @@ extern void secure_close(Port *port);
 extern ssize_t secure_read(Port *port, void *ptr, size_t len);
 extern ssize_t secure_write(Port *port, void *ptr, size_t len);
 
+/* GUCs */
+extern int	ssl_min_protocol_version;
+extern int	ssl_max_protocol_version;
+
+enum ssl_protocol_versions
+{
+	PG_TLS_ANY = 0,
+	PG_TLS1_VERSION,
+	PG_TLS1_1_VERSION,
+	PG_TLS1_2_VERSION,
+	PG_TLS1_3_VERSION,
+};
+
 #endif   /* LIBPQ_H */

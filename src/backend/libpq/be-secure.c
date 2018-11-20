@@ -105,6 +105,9 @@ char	   *SSLECDHCurve;
 /* GUC variable: if false, prefer client ciphers */
 bool		SSLPreferServerCiphers;
 
+int			ssl_min_protocol_version;
+int			ssl_max_protocol_version;
+
 /* ------------------------------------------------------------ */
 /*						 Hardcoded values						*/
 /* ------------------------------------------------------------ */
