@@ -586,6 +586,7 @@ class ValidateInstallPackage(Operation):
                 # example stderr:
                 # error: Failed dependencies:
                 #    geos-3.2.2-1.x86_64.rpm is needed by postgis-1.0-1.x86_64
+                # QQQ postgis static build?
 
                 # TODO: AK: Dependencies should be parsed out here and used to initialize
                 # this MissingDependencyError. However, this exception does not support
