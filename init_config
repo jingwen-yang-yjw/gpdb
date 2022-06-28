@@ -1,0 +1,10 @@
+ARRAY_NAME="Greenplum Data Platform"
+declare -a DATA_DIRECTORY=( /home/gpadmin/data/gpdb6_data/primary /home/gpadmin/data/gpdb6_data/primary )
+SEG_PREFIX=gpseg
+PORT_BASE=7000
+MASTER_HOSTNAME=localhost.localdomain
+MASTER_PORT=15432
+MASTER_DIRECTORY=/home/gpadmin/data/gpdb6_data/master
+TRUSTED_SHELL=ssh
+ENCODING=UNICODE
+
