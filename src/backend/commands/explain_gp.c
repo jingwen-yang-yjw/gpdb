@@ -378,6 +378,7 @@ cdbexplain_sendExecStats(QueryDesc *queryDesc)
 	PlanState  *planstate;
 	CdbExplain_SendStatCtx ctx;
 	StringInfoData notebuf;
+	int			workerindex;
 
 	/* Header offset (where header begins in the message buffer) */
 	int			hoff;
@@ -406,10 +407,20 @@ cdbexplain_sendExecStats(QueryDesc *queryDesc)
 	if (planstate == NULL)
 		return;
 
+	/* 
+	 * GPDB fix EXPLAIN ANALYZE for foreign tables which options 
+	 * 'num_segments' is larger than local's numsegments.
+	 */
+	ExecSlice *slice = &estate->es_sliceTable->slices[LocallyExecutingSliceIndex(estate)];
+	if (slice->planNumSegments > getgpsegmentCount())
+		workerindex = qe_identifier;
+	else
+		workerindex = GpIdentity.segindex;
+
 	/* Start building the message header in our context area. */
 	memset(&ctx, 0, sizeof(ctx));
 	ctx.hdr.type = T_CdbExplain_StatHdr;
-	ctx.hdr.segindex = GpIdentity.segindex;
+	ctx.hdr.segindex = workerindex;
 	ctx.hdr.nInst = 0;
 
 	/* Allocate a separate buffer where nodes can append extra message text. */
@@ -502,7 +513,6 @@ cdbexplain_recvExecStats(struct PlanState *planstate,
 	CdbDispatchResult *dispatchResultEnd;
 	CdbExplain_RecvStatCtx ctx;
 	CdbExplain_DispatchSummary ds;
-	int			gpsegmentCount = getgpsegmentCount();
 	int			iDispatch;
 	int			nDispatch;
 	int			imsgptr;
@@ -580,8 +590,7 @@ cdbexplain_recvExecStats(struct PlanState *planstate,
 									   hdr->nInst * sizeof(hdr->inst) +
 									   hdr->enotes - hdr->bnotes) ||
 			statcell->len != hdr->enotes ||
-			hdr->segindex < -1 ||
-			hdr->segindex >= gpsegmentCount)
+			hdr->segindex < -1)
 		{
 			ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR),
 							errmsg_internal("Invalid execution statistics "
