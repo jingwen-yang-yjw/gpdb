@@ -116,6 +116,8 @@ typedef struct deparse_expr_cxt
  * Functions to determine whether an expression can be evaluated safely on
  * remote server.
  */
+static bool
+partial_agg_ok(Aggref* agg, PgFdwRelationInfo *fpinfo);
 static bool foreign_expr_walker(Node *node,
 								foreign_glob_cxt *glob_cxt,
 								foreign_loc_cxt *outer_cxt);
@@ -226,6 +228,128 @@ classifyConditions(PlannerInfo *root,
 		else
 			*local_conds = lappend(*local_conds, ri);
 	}
+}
+
+static bool supported_by_fdw(Oid target) {
+	static Oid supported_partial_agg[] = {
+			2100, /* pg_catalog.avg int8|bigint */
+			2101, /* pg_catalog.avg int4|int */
+			2102, /* pg_catalog.avg int2|smallint */
+			2103, /* pg_catalog.avg numeric */
+			2104, /* pg_catalog.avg float4 */
+			2105, /* pg_catalog.avg float8 */
+			2107, /* pg_catalog.sum int8|bigint */
+			2114, /* pg_catalog.sum numeric */
+	};
+	/* The following maybe added in the future:
+			2106	pg_catalog.avg internal
+			2148    pg_catalog.variance
+			2149    pg_catalog.variance
+			2150    pg_catalog.variance
+			2151    pg_catalog.variance
+			2152    pg_catalog.variance
+			2153    pg_catalog.variance
+			2154    pg_catalog.stddev
+			2155    pg_catalog.stddev
+			2156    pg_catalog.stddev
+			2157    pg_catalog.stddev
+			2158    pg_catalog.stddev
+			2159    pg_catalog.stddev
+			2335    pg_catalog.array_agg
+			2641    pg_catalog.var_samp
+			2642    pg_catalog.var_samp
+			2643    pg_catalog.var_samp
+			2644    pg_catalog.var_samp
+			2645    pg_catalog.var_samp
+			2646    pg_catalog.var_samp
+			2712    pg_catalog.stddev_samp
+			2713    pg_catalog.stddev_samp
+			2714    pg_catalog.stddev_samp
+			2715    pg_catalog.stddev_samp
+			2716    pg_catalog.stddev_samp
+			2717    pg_catalog.stddev_samp
+			2718    pg_catalog.var_pop
+			2719    pg_catalog.var_pop
+			2720    pg_catalog.var_pop
+			2721    pg_catalog.var_pop
+			2722    pg_catalog.var_pop
+			2723    pg_catalog.var_pop
+			2724    pg_catalog.stddev_pop
+			2725    pg_catalog.stddev_pop
+			2726    pg_catalog.stddev_pop
+			2727    pg_catalog.stddev_pop
+			2728    pg_catalog.stddev_pop
+			2729    pg_catalog.stddev_pop
+			2819    regr_sxx
+			2820    regr_syy
+			2821    regr_sxy
+			2822    regr_avgx
+			2823    regr_avgy
+			2824    regr_r2
+			2825    regr_slope
+			2826    regr_intercept
+			2827    covar_pop
+			2828    covar_samp
+			2829    corr
+			4053    pg_catalog.array_agg
+			7164    gp_hyperloglog_accum
+			13365   pg_catalog.gp_array_agg
+			13366   pg_catalog.gp_array_agg 
+	*/
+	for (int i = 0; i < sizeof(supported_partial_agg) / sizeof(Oid); ++i )
+	{
+		if (target == supported_partial_agg[i])
+		{
+			return true;
+		}
+	}
+	return false;
+}
+
+/* Check that partial aggregate agg is fine to push down. 
+ * condition1) agg is AGGKIND_NORMAL aggregate which contains no distinct
+ *   or order by clauses
+ * condition2) The aggtranstype is not internal and there is no aggfinalfn:
+ *   in this case, nothing we need to do.
+ * condition3) The aggtranstype is not internal, but aggfinalfn is not null:
+ *   in this case, we need to deparse the interal result into the remote sql.
+ * condition4) The aggtranstype is internal:
+ *   We may need to do a deparse, and then we need to do a trans-code to
+ *   transform the final-result from remote server into partial-result.
+ */
+static bool
+partial_agg_ok(Aggref* agg, PgFdwRelationInfo *fpinfo)
+{
+	HeapTuple	aggtup;
+	Form_pg_aggregate aggform;
+	bool        partial_agg_ok = true;
+
+	Assert(agg->aggsplit == AGGSPLIT_INITIAL_SERIAL);
+
+	/* We don't support complex partial aggregates */
+	if (agg->aggdistinct || agg->aggkind != AGGKIND_NORMAL || agg->aggorder != NIL)
+		return false;
+
+	aggtup = SearchSysCache1(AGGFNOID, ObjectIdGetDatum(agg->aggfnoid));
+	if (!HeapTupleIsValid(aggtup))
+		elog(ERROR, "cache lookup failed for aggregate %u", agg->aggfnoid);
+	aggform = (Form_pg_aggregate)GETSTRUCT(aggtup);
+
+	if ((aggform->aggtranstype != INTERNALOID) && (aggform->aggfinalfn == InvalidOid)) 
+	{
+		partial_agg_ok = true;
+	}
+	else if (supported_by_fdw(aggform->aggfnoid))
+	{
+		partial_agg_ok = true;
+	}
+	else
+	{
+		partial_agg_ok = false;
+	}
+
+	ReleaseSysCache(aggtup);
+	return partial_agg_ok;
 }
 
 /*
@@ -704,9 +828,12 @@ foreign_expr_walker(Node *node,
 				if (!IS_UPPER_REL(glob_cxt->foreignrel))
 					return false;
 
-				/* Only non-split aggregates are pushable. */
-				if (agg->aggsplit != AGGSPLIT_SIMPLE)
+				/* Only AGGSPLIT_SIMPLE and AGGSPLIT_INITIAL_SERIAL aggregates are pushable. */
+				if (agg->aggsplit != AGGSPLIT_SIMPLE &&
+					agg->aggsplit != AGGSPLIT_INITIAL_SERIAL)
 					return false;
+				if (agg->aggsplit == AGGSPLIT_INITIAL_SERIAL && !partial_agg_ok(agg, fpinfo))
+ 					return false;
 
 				/* As usual, it must be shippable. */
 				if (!is_shippable(agg->aggfnoid, ProcedureRelationId, fpinfo))
@@ -2996,6 +3123,100 @@ deparseArrayExpr(ArrayExpr *node, deparse_expr_cxt *context)
 						 deparse_type_name(node->array_typeid, -1));
 }
 
+static void
+deparsePartialAggFunctionParamFilter(Aggref *node, deparse_expr_cxt *context,
+	StringInfo agg_param, StringInfo agg_filter)
+{
+	StringInfo buf = context->buf;
+
+	switch (node->aggfnoid) {
+		case 2100:
+			/* int8 AVG */
+			/* Fall through */	
+		case 2101:
+			/* int4 AVG function */
+			/* Fall through */
+		case 2102:
+			/* int2 AVG function */
+			/* Fall through */
+		case 2103:
+			/* numeric AVG function */
+			/* According to aggcombinefn, those aggregate functions need to fetch same columns from remote server. */
+			appendStringInfo(buf, "array[count(%s)%s, sum(%s)%s]", agg_param->data, agg_filter->data,
+				agg_param->data, agg_filter->data);
+			break;
+		case 2104:
+			/* float4 AVG function */
+			/* Fall through */
+		case 2105:
+			/* float8 AVG function */
+			appendStringInfo(buf, "array[count(%s)%s, sum(%s)%s, count(%s)*var_pop(%s)%s]", 
+				agg_param->data, agg_filter->data, agg_param->data, agg_filter->data, 
+				agg_param->data, agg_param->data, agg_filter->data);
+			break;
+		default:
+			/* Find aggregate name from aggfnoid which is a pg_proc entry */
+			appendFunctionName(node->aggfnoid, context);
+			appendStringInfo(buf, "(%s)%s", agg_param->data, agg_filter->data);
+			break;
+	}
+}
+/* Deparse an Partial Aggref node. */
+static void 
+deparsePartialAggref(Aggref *node, deparse_expr_cxt *context)
+{
+	StringInfoData agg_param;
+	StringInfoData agg_filter;
+	bool		use_variadic;
+	StringInfo origin_buf = context->buf;
+
+	/* Check if need to print VARIADIC (cf. ruleutils.c) */
+	use_variadic = node->aggvariadic;
+	initStringInfo(&agg_param);
+	initStringInfo(&agg_filter);
+
+	context->buf = &agg_param;
+	/* aggstar can be set only in zero-argument aggregates */
+	if (node->aggstar)
+		appendStringInfoChar(&agg_param, '*');
+	else
+	{
+		ListCell   *arg;
+		bool		first = true;
+
+		/* Add all the arguments */
+		foreach(arg, node->args)
+		{
+			TargetEntry *tle = (TargetEntry *) lfirst(arg);
+			Node	   *n = (Node *) tle->expr;
+
+			if (tle->resjunk)
+				continue;
+
+			if (!first)
+				appendStringInfoString(&agg_param, ", ");
+			first = false;
+
+			/* Add VARIADIC */
+			if (use_variadic && lnext(arg) == NULL)
+				appendStringInfoString(&agg_param, "VARIADIC ");
+
+			deparseExpr((Expr *) n, context);
+		}
+	}
+
+	context->buf = &agg_filter;
+	/* Add FILTER (WHERE ..) */
+	if (node->aggfilter != NULL)
+	{
+		appendStringInfoString(&agg_filter, " FILTER (WHERE ");
+		deparseExpr((Expr *) node->aggfilter, context);
+		appendStringInfoChar(&agg_filter, ')');
+	}
+
+	context->buf = origin_buf;
+	deparsePartialAggFunctionParamFilter(node, context, &agg_param, &agg_filter);
+}
 /*
  * Deparse an Aggref node.
  */
@@ -3005,6 +3226,9 @@ deparseAggref(Aggref *node, deparse_expr_cxt *context)
 	StringInfo	buf = context->buf;
 	bool		use_variadic;
 
+	if (node->aggsplit == AGGSPLIT_INITIAL_SERIAL) {
+		return deparsePartialAggref(node, context);
+	}
 	/* Only basic, non-split aggregation accepted. */
 	Assert(node->aggsplit == AGGSPLIT_SIMPLE);
 

@@ -229,6 +229,8 @@ InitPgFdwOptions(void)
 		/* hosts and ports is avaiable on server only */
 		{"multi_hosts", ForeignServerRelationId, false},
 		{"multi_ports", ForeignServerRelationId, false},
+		/* num_segments is available on server only */
+		{"num_segments", ForeignServerRelationId, false},
 		{NULL, InvalidOid, false}
 	};
 

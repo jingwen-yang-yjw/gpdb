@@ -357,7 +357,8 @@ add_paths_to_joinrel(PlannerInfo *root,
 	 * to the same server and assigned to the same user to check access
 	 * permissions as, give the FDW a chance to push down joins.
 	 */
-	if (joinrel->fdwroutine &&
+	if (joinrel->exec_location != FTEXECLOCATION_MULTI_SERVERS &&
+		joinrel->fdwroutine &&
 		joinrel->fdwroutine->GetForeignJoinPaths)
 		joinrel->fdwroutine->GetForeignJoinPaths(root, joinrel,
 												 outerrel, innerrel,
