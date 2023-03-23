@@ -6073,6 +6073,18 @@ foreign_grouping_ok(PlannerInfo *root, RelOptInfo *grouped_rel,
 			 * Non-grouping expression we need to compute.  Can we ship it
 			 * as-is to the foreign server?
 			 */
+			if (IsA(expr, Var))
+			{
+				/*
+				 * If non-grouping expressions are plain vars outside an aggregate,
+				 * it's unsafe to make foreign grouping.
+				 * Because corresponding Remote SQL might be invalid --
+				 * such columns neither appear in the GROUP BY clause nor be used
+				 * in an aggregate function.
+				 */
+				return false;
+			}
+
 			if (is_foreign_expr(root, grouped_rel, expr) &&
 				!is_foreign_param(root, grouped_rel, expr))
 			{
@@ -6241,7 +6253,8 @@ postgresGetForeignUpperPaths(PlannerInfo *root, UpperRelationKind stage,
 	/* Ignore stages we don't support; and skip any duplicate calls. */
 	if ((stage != UPPERREL_GROUP_AGG &&
 		 stage != UPPERREL_ORDERED &&
-		 stage != UPPERREL_FINAL) ||
+		 stage != UPPERREL_FINAL &&
+		 stage != UPPERREL_CDB_FIRST_STAGE_GROUP_AGG) ||
 		output_rel->fdw_private)
 		return;
 
@@ -6252,6 +6265,13 @@ postgresGetForeignUpperPaths(PlannerInfo *root, UpperRelationKind stage,
 
 	switch (stage)
 	{
+		case UPPERREL_CDB_FIRST_STAGE_GROUP_AGG:
+			/* It's unsafe to push having statements with partial aggregates */
+			if(((GroupPathExtraData *) extra)->havingQual) {
+				return;
+			}
+			/* Fall through */
+			/* Partial agg push down path */
 		case UPPERREL_GROUP_AGG:
 			add_foreign_grouping_paths(root, input_rel, output_rel,
 									   (GroupPathExtraData *) extra);
@@ -6728,6 +6748,41 @@ add_foreign_final_paths(PlannerInfo *root, RelOptInfo *input_rel,
 	add_path(final_rel, (Path *) final_path);
 }
 
+static void get_retrieved_partial_aggfnoids(ForeignScanState *fsstate,
+											List *retrieved_attrs,
+											List **retrieved_aggfnoids)
+{
+	ListCell *lc1 = NULL, *lc2 = NULL;
+	if (!fsstate)
+	{
+		foreach(lc1, retrieved_attrs)
+			*retrieved_aggfnoids = lappend_oid(*retrieved_aggfnoids, InvalidOid);
+	}
+	else
+	{
+		/* ForeignScan case */
+		ForeignScan *fsplan = (ForeignScan*)fsstate->ss.ps.plan;
+		if(!fsplan->fdw_scan_tlist)
+		{
+			foreach(lc1, retrieved_attrs)
+				*retrieved_aggfnoids = lappend_oid(*retrieved_aggfnoids, InvalidOid);
+		}
+		else
+		{
+			forboth(lc1, retrieved_attrs, lc2, fsplan->fdw_scan_tlist)
+			{
+				TargetEntry *tle = lfirst_node(TargetEntry, lc2);
+
+				if (tle->expr != NULL && nodeTag(tle->expr) == T_Aggref &&
+					((Aggref *) tle->expr)->aggsplit == AGGSPLIT_INITIAL_SERIAL)
+					*retrieved_aggfnoids = lappend_oid(*retrieved_aggfnoids, ((Aggref *) tle->expr)->aggfnoid);
+				else
+					*retrieved_aggfnoids = lappend_oid(*retrieved_aggfnoids, InvalidOid);
+			}
+		}
+	}
+}
+
 /*
  * Create a tuple from the specified row of the PGresult.
  *
@@ -6758,8 +6813,10 @@ make_tuple_from_result_row(PGresult *res,
 	ConversionLocation errpos;
 	ErrorContextCallback errcallback;
 	MemoryContext oldcontext;
-	ListCell   *lc;
+	ListCell   *lc1;
+	ListCell   *lc2;
 	int			j;
+	List		*retrieved_aggfnoids = NIL;
 
 	Assert(row < PQntuples(res));
 
@@ -6798,13 +6855,17 @@ make_tuple_from_result_row(PGresult *res,
 	errcallback.previous = error_context_stack;
 	error_context_stack = &errcallback;
 
+	get_retrieved_partial_aggfnoids(fsstate, retrieved_attrs, &retrieved_aggfnoids);
+	Assert(list_length(retrieved_attrs) == list_length(retrieved_aggfnoids));
+
 	/*
 	 * i indexes columns in the relation, j indexes columns in the PGresult.
 	 */
 	j = 0;
-	foreach(lc, retrieved_attrs)
+	forboth(lc1, retrieved_attrs, lc2, retrieved_aggfnoids)
 	{
-		int			i = lfirst_int(lc);
+		int			i = lfirst_int(lc1);
+		Oid			aggfnoid = lfirst_oid(lc2);
 		char	   *valstr;
 
 		/* fetch next column's textual value */
@@ -6824,11 +6885,26 @@ make_tuple_from_result_row(PGresult *res,
 			/* ordinary column */
 			Assert(i <= tupdesc->natts);
 			nulls[i - 1] = (valstr == NULL);
-			/* Apply the input function even to nulls, to support domains */
-			values[i - 1] = InputFunctionCall(&attinmeta->attinfuncs[i - 1],
-											  valstr,
-											  attinmeta->attioparams[i - 1],
-											  attinmeta->atttypmods[i - 1]);
+			PGFunction	fn_addr = GetTranscodingFnFromOid(aggfnoid);
+			if (!fn_addr) {
+				/* Apply the input function even to nulls, to support domains */
+				values[i - 1] = InputFunctionCall(&attinmeta->attinfuncs[i - 1],
+											  	valstr,
+											  	attinmeta->attioparams[i - 1],
+											  	attinmeta->atttypmods[i - 1]);
+			} 
+			else 
+			{
+				/* Transcoding to internal result for partial AGG */
+				FmgrInfo flinfo;
+				memset(&flinfo, 0, sizeof(FmgrInfo));
+				flinfo.fn_addr = fn_addr;
+				flinfo.fn_nargs = 3;
+				flinfo.fn_strict = true;
+				values[i - 1] = InputFunctionCall(&flinfo, valstr, 
+												attinmeta->attioparams[i - 1], 
+												attinmeta->atttypmods[i - 1]);
+			}
 		}
 		else if (i == SelfItemPointerAttributeNumber)
 		{
