@@ -4784,7 +4784,8 @@ create_ordinary_grouping_paths(PlannerInfo *root, RelOptInfo *input_rel,
 	 * If there is an FDW that's responsible for all baserels of the query,
 	 * let it consider adding ForeignPaths.
 	 */
-	if (grouped_rel->fdwroutine &&
+	if (grouped_rel->exec_location != FTEXECLOCATION_ALL_SEGMENTS &&
+		grouped_rel->fdwroutine &&
 		grouped_rel->fdwroutine->GetForeignUpperPaths)
 		grouped_rel->fdwroutine->GetForeignUpperPaths(root, UPPERREL_GROUP_AGG,
 													  input_rel, grouped_rel,
@@ -7609,7 +7610,8 @@ add_paths_to_grouping_rel(PlannerInfo *root, RelOptInfo *input_rel,
 										   &extra->agg_final_costs,
 										   gd ? gd->rollups : NIL,
 										   new_rollups,
-										   strat);
+										   strat,
+										   extra);
 	}
 }
 
