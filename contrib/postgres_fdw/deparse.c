@@ -704,8 +704,9 @@ foreign_expr_walker(Node *node,
 				if (!IS_UPPER_REL(glob_cxt->foreignrel))
 					return false;
 
-				/* Only non-split aggregates are pushable. */
-				if (agg->aggsplit != AGGSPLIT_SIMPLE)
+				/* Only AGGSPLIT_SIMPLE and AGGSPLIT_INITIAL_SERIAL aggregates are pushable. */
+				if (agg->aggsplit != AGGSPLIT_SIMPLE &&
+					agg->aggsplit != AGGSPLIT_INITIAL_SERIAL)
 					return false;
 
 				/* As usual, it must be shippable. */
