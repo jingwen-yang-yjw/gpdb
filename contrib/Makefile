@@ -23,6 +23,7 @@ SUBDIRS = \
 		dict_int	\
 		dict_xsyn	\
 		file_fdw	\
+		postgres_fdw	\
 		fuzzystrmatch	\
 		hstore		\
 		intagg		\
