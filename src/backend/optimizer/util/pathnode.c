@@ -3503,7 +3503,7 @@ create_foreign_upper_path(PlannerInfo *root, RelOptInfo *rel,
 						  List *fdw_private)
 {
 	ForeignPath *pathnode = makeNode(ForeignPath);
-
+	ForeignServer *server = NULL;
 	/*
 	 * Upper relations should never have any lateral references, since joining
 	 * is complete.
@@ -3528,7 +3528,11 @@ create_foreign_upper_path(PlannerInfo *root, RelOptInfo *rel,
 			CdbPathLocus_MakeGeneral(&(pathnode->path.locus));
 			break;
 		case FTEXECLOCATION_ALL_SEGMENTS:
-			CdbPathLocus_MakeStrewn(&(pathnode->path.locus), getgpsegmentCount());
+			server = GetForeignServer(rel->serverid);
+			if (server)
+				CdbPathLocus_MakeStrewn(&(pathnode->path.locus), server->num_segments);
+			else
+				CdbPathLocus_MakeStrewn(&(pathnode->path.locus), getgpsegmentCount());
 			break;
 		case FTEXECLOCATION_COORDINATOR:
 			CdbPathLocus_MakeEntry(&(pathnode->path.locus));
