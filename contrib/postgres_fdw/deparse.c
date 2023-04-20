@@ -3123,6 +3123,101 @@ deparseArrayExpr(ArrayExpr *node, deparse_expr_cxt *context)
 						 deparse_type_name(node->array_typeid, -1));
 }
 
+static void
+deparsePartialAggFunctionParamFilter(Aggref *node, deparse_expr_cxt *context,
+	StringInfo agg_param, StringInfo agg_filter)
+{
+	StringInfo buf = context->buf;
+
+	switch (node->aggfnoid) {
+		case 2100:
+			/* int8 AVG */
+			/* Fall through */	
+		case 2101:
+			/* int4 AVG function */
+			/* Fall through */
+		case 2102:
+			/* int2 AVG function */
+			appendStringInfo(buf, "array[count(%s)%s, sum(%s)%s]", agg_param->data, agg_filter->data,
+				agg_param->data, agg_filter->data);
+			break;
+		case 2103:
+			/* numeric AVG function */
+			appendStringInfo(buf, "array[count(%s)%s, sum(%s)%s]", agg_param->data, agg_filter->data,
+				agg_param->data, agg_filter->data);
+			break;
+		case 2104:
+			/* float4 AVG function */
+			/* Fall through */
+		case 2105:
+			/* float8 AVG function */
+			appendStringInfo(buf, "array[count(%s)%s, sum(%s)%s, count(%s)*var_pop(%s)%s]", 
+				agg_param->data, agg_filter->data, agg_param->data, agg_filter->data, 
+				agg_param->data, agg_param->data, agg_filter->data);
+			break;
+		default:
+			/* Find aggregate name from aggfnoid which is a pg_proc entry */
+			appendFunctionName(node->aggfnoid, context);
+			appendStringInfo(buf, "(%s)%s", agg_param->data, agg_filter->data);
+			break;
+	}
+}
+/* Deparse an Partial Aggref node. */
+static void 
+deparsePartialAggref(Aggref *node, deparse_expr_cxt *context)
+{
+	StringInfoData agg_param;
+	StringInfoData agg_filter;
+	bool		use_variadic;
+	StringInfo origin_buf = context->buf;
+
+	/* Check if need to print VARIADIC (cf. ruleutils.c) */
+	use_variadic = node->aggvariadic;
+	initStringInfo(&agg_param);
+	initStringInfo(&agg_filter);
+
+	context->buf = &agg_param;
+	/* aggstar can be set only in zero-argument aggregates */
+	if (node->aggstar)
+		appendStringInfoChar(&agg_param, '*');
+	else
+	{
+		ListCell   *arg;
+		bool		first = true;
+
+		/* Add all the arguments */
+		foreach(arg, node->args)
+		{
+			TargetEntry *tle = (TargetEntry *) lfirst(arg);
+			Node	   *n = (Node *) tle->expr;
+
+			if (tle->resjunk)
+				continue;
+
+			if (!first)
+				appendStringInfoString(&agg_param, ", ");
+			first = false;
+
+			/* Add VARIADIC */
+			if (use_variadic && lnext(arg) == NULL)
+				appendStringInfoString(&agg_param, "VARIADIC ");
+
+			deparseExpr((Expr *) n, context);
+		}
+	}
+
+	context->buf = &agg_filter;
+	/* Add FILTER (WHERE ..) */
+	if (node->aggfilter != NULL)
+	{
+		appendStringInfoString(&agg_filter, " FILTER (WHERE ");
+		deparseExpr((Expr *) node->aggfilter, context);
+		appendStringInfoChar(&agg_filter, ')');
+	}
+
+	context->buf = origin_buf;
+	deparsePartialAggFunctionParamFilter(node, context, &agg_param, &agg_filter);
+}
 /*
  * Deparse an Aggref node.
  */
@@ -3132,6 +3227,9 @@ deparseAggref(Aggref *node, deparse_expr_cxt *context)
 	StringInfo	buf = context->buf;
 	bool		use_variadic;
 
+	if (node->aggsplit == AGGSPLIT_INITIAL_SERIAL) {
+		return deparsePartialAggref(node, context);
+	}
 	/* Only basic, non-split aggregation accepted. */
 	Assert(node->aggsplit == AGGSPLIT_SIMPLE);
 
