@@ -68,6 +68,7 @@ postgres_fdw_validator(PG_FUNCTION_ARGS)
 	List	   *options_list = untransformRelOptions(PG_GETARG_DATUM(0));
 	Oid			catalog = PG_GETARG_OID(1);
 	ListCell   *cell;
+	List		*host_list = NIL, *port_list = NIL;
 
 	/* Build our options lists if we didn't yet. */
 	InitPgFdwOptions();
@@ -146,7 +147,26 @@ postgres_fdw_validator(PG_FUNCTION_ARGS)
 						 errmsg("\"%s\" must be an integer value greater than zero",
 								def->defname)));
 		}
+		else if (strcmp(def->defname, "multi_hosts") == 0)
+		{
+			char *one_host = NULL;
+			char *multi_hosts = pstrdup(defGetString(def));
+			while ((one_host = strsep(&multi_hosts, " ")) != NULL)
+				host_list = lappend(host_list, makeString(one_host));
+		}
+		else if (strcmp(def->defname, "multi_ports") == 0)
+		{
+			char *one_port = NULL;
+			char *multi_ports = pstrdup(defGetString(def));
+			while ((one_port = strsep(&multi_ports, " ")) != NULL)
+				port_list = lappend(port_list, makeString(one_port));
+		}
 	}
+
+	if(list_length(host_list) != list_length(port_list))
+		ereport(ERROR,
+				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+				 errmsg("the number of multi_hosts and multi_ports is not same.")));
 
 	PG_RETURN_VOID();
 }
@@ -182,6 +202,9 @@ InitPgFdwOptions(void)
 		{"fetch_size", ForeignTableRelationId, false},
 		/* num_segments is available on server only */
 		{"num_segments", ForeignServerRelationId, false},
+		/* hosts and ports is avaiable on server only */
+		{"multi_hosts", ForeignServerRelationId, false},
+		{"multi_ports", ForeignServerRelationId, false},
 		{NULL, InvalidOid, false}
 	};
 

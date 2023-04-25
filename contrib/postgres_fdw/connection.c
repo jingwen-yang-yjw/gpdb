@@ -104,7 +104,7 @@ static bool pgfdw_get_cleanup_result(PGconn *conn, TimestampTz endtime,
  * (not even on error), we need this flag to cue manual cleanup.
  */
 PGconn *
-GetConnection(UserMapping *user, bool will_prep_stmt)
+GetConnection(ForeignServer *server, UserMapping *user, bool will_prep_stmt, bool reuseConn)
 {
 	bool		found;
 	ConnCacheEntry *entry;
@@ -174,6 +174,12 @@ GetConnection(UserMapping *user, bool will_prep_stmt)
 	 * require some overhead.  Broken connection will be detected when the
 	 * connection is actually used.
 	 */
+	if(!reuseConn && entry->conn != NULL)
+	{
+		elog(DEBUG3, "closing connection %p because reuseConn is false.",
+			 entry->conn);
+		disconnect_pg_server(entry);
+	}
 
 	/*
 	 * If cache entry doesn't have a connection, we have to establish a new
@@ -182,8 +188,6 @@ GetConnection(UserMapping *user, bool will_prep_stmt)
 	 */
 	if (entry->conn == NULL)
 	{
-		ForeignServer *server = GetForeignServer(user->serverid);
-
 		/* Reset all transient state fields, to be sure all are clean */
 		entry->xact_depth = 0;
 		entry->have_prep_stmt = false;

@@ -1,5 +1,5 @@
 -- This sql file is used by mpp_gp2pg_postgres_fdw test, and it runs in
--- postgres dataserver.
+-- postgres server.
 
 -- ===================================================================
 -- create objects used through FDW pgserver server
@@ -25,7 +25,7 @@ INSERT INTO "MPP_S 1"."T 1" (c1, c2, c3, c4)
 	       id % 10,
 	       id,
 	       id
-	FROM generate_series(1, 1000) id;
+	FROM generate_series(1, 500) id;
 
 UPDATE "MPP_S 1"."T 1"
   SET c5 = c1 * 0.001,

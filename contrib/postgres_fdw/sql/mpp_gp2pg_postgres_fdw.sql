@@ -17,14 +17,18 @@ DROP EXTENSION IF EXISTS postgres_fdw CASCADE;
 CREATE EXTENSION postgres_fdw;
 
 CREATE SERVER pgserver FOREIGN DATA WRAPPER postgres_fdw
-  OPTIONS (dbname 'contrib_regression', host 'localhost', port '5432', num_segments '4');
+  OPTIONS (dbname 'contrib_regression', multi_hosts 'localhost localhost',
+           multi_ports '5432 5555', num_segments '2', mpp_execute 'all segments');
 
 CREATE USER MAPPING FOR CURRENT_USER SERVER pgserver;
 
 -- ===================================================================
 -- create objects used through FDW pgserver server
 -- ===================================================================
-\! env PGOPTIONS='' psql -p ${PG_PORT} contrib_regression -f sql/postgres_sql/mpp_gp2pg_postgres_init.sql
+-- remote postgres server 1 -- listening port 5432
+\! env PGOPTIONS='' psql -p 5432 contrib_regression -f sql/postgres_sql/mpp_gp2pg_postgres_init_1.sql
+-- remote postgres server 2 -- listening port 5555
+\! env PGOPTIONS='' psql -p 5555 contrib_regression -f sql/postgres_sql/mpp_gp2pg_postgres_init_2.sql
 
 -- ===================================================================
 -- create foreign tables
@@ -37,7 +41,22 @@ CREATE FOREIGN TABLE mpp_ft1 (
 	c5 real,
 	c6 double precision,
 	c7 numeric
-) SERVER pgserver OPTIONS (schema_name 'MPP_S 1', table_name 'T 1', mpp_execute 'all segments');
+) SERVER pgserver OPTIONS (schema_name 'MPP_S 1', table_name 'T 1');
+
+-- ===================================================================
+-- tests for validator
+-- ===================================================================
+CREATE SERVER testserver FOREIGN DATA WRAPPER postgres_fdw
+  OPTIONS (dbname 'contrib_regression', multi_hosts 'localhost localhost',
+           multi_ports '5432', num_segments '2', mpp_execute 'all segments');
+
+-- ===================================================================
+-- Simple queries
+-- ===================================================================
+EXPLAIN VERBOSE SELECT * FROM mpp_ft1;
+ALTER FOREIGN TABLE mpp_ft1 OPTIONS (add use_remote_estimate 'true');
+EXPLAIN VERBOSE SELECT * FROM mpp_ft1;
+ALTER FOREIGN TABLE mpp_ft1 OPTIONS (drop use_remote_estimate);
 
 -- ===================================================================
 -- Aggregate and grouping queries
@@ -113,8 +132,8 @@ SELECT c2, c2 FROM mpp_ft1 WHERE c2 > 6 GROUP BY 1, 2 ORDER BY sum(c1);
 -- Testing HAVING clause
 -- It's unsafe for partial agg to push down HAVING clause.
 EXPLAIN (VERBOSE, COSTS OFF)
-SELECT c2, sum(c1) FROM mpp_ft1 GROUP BY c2 HAVING avg(c1) < 500 AND sum(c1) < 199200 ORDER BY c2;
-SELECT c2, sum(c1) FROM mpp_ft1 GROUP BY c2 HAVING avg(c1) < 500 AND sum(c1) < 199200 ORDER BY c2;
+SELECT c2, sum(c1) FROM mpp_ft1 GROUP BY c2 HAVING avg(c1) < 500 AND sum(c1) < 49800 ORDER BY c2;
+SELECT c2, sum(c1) FROM mpp_ft1 GROUP BY c2 HAVING avg(c1) < 500 AND sum(c1) < 49800 ORDER BY c2;
 
 -- Remote aggregate in combination with a local Param (for the output
 -- of an initplan) can be trouble, per bug #15781
@@ -179,3 +198,13 @@ SELECT c1, c2 FROM mpp_ft1 order by c1 limit 3;
 EXPLAIN (VERBOSE, COSTS OFF)
 SELECT count(*), sum(t1.c1), avg(t2.c2) FROM mpp_ft1 t1 inner join mpp_ft1 t2 on (t1.c1 = t2.c1) where t1.c1 = 2;
 SELECT count(*), sum(t1.c1), avg(t2.c2) FROM mpp_ft1 t1 inner join mpp_ft1 t2 on (t1.c1 = t2.c1) where t1.c1 = 2;
+
+-- ===================================================================
+-- Modify table
+-- ===================================================================
+-- Now we don't support modify table when there are multiple pg servers
+INSERT INTO mpp_ft1 VALUES (0, 0, 0, 0, 0, 0, 0);
+
+UPDATE mpp_ft1 SET c1 = 0;
+
+DELETE FROM mpp_ft1;

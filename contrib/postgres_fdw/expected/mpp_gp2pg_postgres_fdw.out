@@ -10,22 +10,82 @@ SET gp_enable_minmax_optimization = off;
 -- Clean
 -- start_ignore
 DROP EXTENSION IF EXISTS postgres_fdw CASCADE;
-NOTICE:  extension "postgres_fdw" does not exist, skipping
+NOTICE:  drop cascades to 49 other objects
+DETAIL:  drop cascades to server testserver1
+drop cascades to user mapping for public on server testserver1
+drop cascades to server pgserver
+drop cascades to user mapping for gpadmin on server pgserver
+drop cascades to foreign table ft1
+drop cascades to foreign table ft2
+drop cascades to foreign table ft4
+drop cascades to foreign table ft5
+drop cascades to foreign table ft3
+drop cascades to foreign table rem1
+drop cascades to foreign table grem1
+drop cascades to foreign table rem2
+drop cascades to foreign table import_dest1.t1
+drop cascades to foreign table import_dest1.t2
+drop cascades to foreign table import_dest1.t3
+drop cascades to foreign table import_dest1.t4
+drop cascades to foreign table import_dest1."x 4"
+drop cascades to foreign table import_dest1."x 5"
+drop cascades to foreign table import_dest1."x 6"
+drop cascades to foreign table import_dest2.t1
+drop cascades to foreign table import_dest2.t2
+drop cascades to foreign table import_dest2.t3
+drop cascades to foreign table import_dest2.t4
+drop cascades to foreign table import_dest2."x 4"
+drop cascades to foreign table import_dest2."x 5"
+drop cascades to foreign table import_dest2."x 6"
+drop cascades to foreign table import_dest3.t1
+drop cascades to foreign table import_dest3.t2
+drop cascades to foreign table import_dest3.t3
+drop cascades to foreign table import_dest3.t4
+drop cascades to foreign table import_dest3."x 4"
+drop cascades to foreign table import_dest3."x 5"
+drop cascades to foreign table import_dest3."x 6"
+drop cascades to foreign table import_dest4.t1
+drop cascades to foreign table import_dest4.t2
+drop cascades to foreign table import_dest4.t3
+drop cascades to foreign table import_dest4.t4
+drop cascades to foreign table import_dest4."x 5"
+drop cascades to foreign table import_dest4."x 6"
+drop cascades to foreign table ftprt1_p1
+drop cascades to foreign table ftprt1_p2
+drop cascades to foreign table ftprt2_p1
+drop cascades to foreign table ftprt2_p2
+drop cascades to foreign table fpagg_tab_p1
+drop cascades to foreign table fpagg_tab_p2
+drop cascades to foreign table fpagg_tab_p3
+drop cascades to server pgserver2
+drop cascades to user mapping for gpadmin on server pgserver2
+drop cascades to foreign table ft6
 -- end_ignore
 CREATE EXTENSION postgres_fdw;
 CREATE SERVER pgserver FOREIGN DATA WRAPPER postgres_fdw
-  OPTIONS (dbname 'contrib_regression', host 'localhost', port '5432', num_segments '4');
+  OPTIONS (dbname 'contrib_regression', multi_hosts 'localhost localhost',
+           multi_ports '5432 5555', num_segments '2', mpp_execute 'all segments');
 CREATE USER MAPPING FOR CURRENT_USER SERVER pgserver;
 -- ===================================================================
 -- create objects used through FDW pgserver server
 -- ===================================================================
-\! env PGOPTIONS='' psql -p ${PG_PORT} contrib_regression -f sql/postgres_sql/mpp_gp2pg_postgres_init.sql
+-- remote postgres server 1 -- listening port 5432
+\! env PGOPTIONS='' psql -p 5432 contrib_regression -f sql/postgres_sql/mpp_gp2pg_postgres_init_1.sql
 SET
 CREATE SCHEMA
 CREATE TABLE
 ALTER TABLE
-INSERT 0 1000
-UPDATE 1000
+INSERT 0 500
+UPDATE 500
+ANALYZE
+-- remote postgres server 2 -- listening port 5555
+\! env PGOPTIONS='' psql -p 5555 contrib_regression -f sql/postgres_sql/mpp_gp2pg_postgres_init_2.sql
+SET
+CREATE SCHEMA
+CREATE TABLE
+ALTER TABLE
+INSERT 0 500
+UPDATE 500
 ANALYZE
 -- ===================================================================
 -- create foreign tables
@@ -38,7 +98,43 @@ CREATE FOREIGN TABLE mpp_ft1 (
 	c5 real,
 	c6 double precision,
 	c7 numeric
-) SERVER pgserver OPTIONS (schema_name 'MPP_S 1', table_name 'T 1', mpp_execute 'all segments');
+) SERVER pgserver OPTIONS (schema_name 'MPP_S 1', table_name 'T 1');
+-- ===================================================================
+-- tests for validator
+-- ===================================================================
+CREATE SERVER testserver FOREIGN DATA WRAPPER postgres_fdw
+  OPTIONS (dbname 'contrib_regression', multi_hosts 'localhost localhost',
+           multi_ports '5432', num_segments '2', mpp_execute 'all segments');
+ERROR:  the number of multi_hosts and multi_ports is not same.
+-- ===================================================================
+-- Simple queries
+-- ===================================================================
+EXPLAIN VERBOSE SELECT * FROM mpp_ft1;
+                                      QUERY PLAN                                      
+--------------------------------------------------------------------------------------
+ Gather Motion 2:1  (slice1; segments: 2)  (cost=100.00..2330.00 rows=71000 width=62)
+   Output: c1, c2, c3, c4, c5, c6, c7
+   ->  Foreign Scan on public.mpp_ft1  (cost=100.00..1265.00 rows=35500 width=62)
+         Output: c1, c2, c3, c4, c5, c6, c7
+         Remote SQL: SELECT c1, c2, c3, c4, c5, c6, c7 FROM "MPP_S 1"."T 1"
+ Optimizer: Postgres query optimizer
+ Settings: gp_enable_minmax_optimization = 'off', optimizer = 'off'
+(7 rows)
+
+ALTER FOREIGN TABLE mpp_ft1 OPTIONS (add use_remote_estimate 'true');
+EXPLAIN VERBOSE SELECT * FROM mpp_ft1;
+                                      QUERY PLAN                                       
+---------------------------------------------------------------------------------------
+ Gather Motion 2:1  (slice1; segments: 2)  (cost=100.00..176.00 rows=2000 width=32836)
+   Output: c1, c2, c3, c4, c5, c6, c7
+   ->  Foreign Scan on public.mpp_ft1  (cost=100.00..146.00 rows=1000 width=32836)
+         Output: c1, c2, c3, c4, c5, c6, c7
+         Remote SQL: SELECT c1, c2, c3, c4, c5, c6, c7 FROM "MPP_S 1"."T 1"
+ Optimizer: Postgres query optimizer
+ Settings: gp_enable_minmax_optimization = 'off', optimizer = 'off'
+(7 rows)
+
+ALTER FOREIGN TABLE mpp_ft1 OPTIONS (drop use_remote_estimate);
 -- ===================================================================
 -- Aggregate and grouping queries
 -- ===================================================================
@@ -49,7 +145,7 @@ SELECT count(c1), count(c3), count(c4), count(c5), count(c6), count(c7) FROM mpp
 ----------------------------------------------------------------------------------------------------------------------------------------------------
  Finalize Aggregate
    Output: count(c1), count(c3), count(c4), count(c5), count(c6), count(c7)
-   ->  Gather Motion 4:1  (slice1; segments: 4)
+   ->  Gather Motion 2:1  (slice1; segments: 2)
          Output: (PARTIAL count(c1)), (PARTIAL count(c3)), (PARTIAL count(c4)), (PARTIAL count(c5)), (PARTIAL count(c6)), (PARTIAL count(c7))
          ->  Foreign Scan
                Output: (PARTIAL count(c1)), (PARTIAL count(c3)), (PARTIAL count(c4)), (PARTIAL count(c5)), (PARTIAL count(c6)), (PARTIAL count(c7))
@@ -62,16 +158,16 @@ SELECT count(c1), count(c3), count(c4), count(c5), count(c6), count(c7) FROM mpp
 SELECT count(c1), count(c3), count(c4), count(c5), count(c6), count(c7) FROM mpp_ft1;
  count | count | count | count | count | count 
 -------+-------+-------+-------+-------+-------
-  4000 |  4000 |  4000 |  4000 |  4000 |  4000
+  1000 |  1000 |  1000 |  1000 |  1000 |  1000
 (1 row)
 
 EXPLAIN (VERBOSE, COSTS OFF)
 SELECT sum(c1), sum(c3), sum(c4), sum(c5), sum(c6), sum(c7) FROM mpp_ft1;
-                                                                   QUERY PLAN                                                                   
-------------------------------------------------------------------------------------------------------------------------------------------------
+                                                               QUERY PLAN                                                               
+----------------------------------------------------------------------------------------------------------------------------------------
  Finalize Aggregate
    Output: sum(c1), sum(c3), sum(c4), sum(c5), sum(c6), sum(c7)
-   ->  Gather Motion 4:1  (slice1; segments: 4)
+   ->  Gather Motion 2:1  (slice1; segments: 2)
          Output: (PARTIAL sum(c1)), (PARTIAL sum(c3)), (PARTIAL sum(c4)), (PARTIAL sum(c5)), (PARTIAL sum(c6)), (PARTIAL sum(c7))
          ->  Foreign Scan
                Output: (PARTIAL sum(c1)), (PARTIAL sum(c3)), (PARTIAL sum(c4)), (PARTIAL sum(c5)), (PARTIAL sum(c6)), (PARTIAL sum(c7))
@@ -82,9 +178,9 @@ SELECT sum(c1), sum(c3), sum(c4), sum(c5), sum(c6), sum(c7) FROM mpp_ft1;
 (10 rows)
 
 SELECT sum(c1), sum(c3), sum(c4), sum(c5), sum(c6), sum(c7) FROM mpp_ft1;
-   sum   |   sum   |   sum   |    sum    | sum  |   sum    
----------+---------+---------+-----------+------+----------
- 2002000 | 2002000 | 2002000 | 2001.9999 | 2002 | 2002.000
+  sum   |  sum   |  sum   |  sum  |        sum        |   sum   
+--------+--------+--------+-------+-------------------+---------
+ 500500 | 500500 | 500500 | 500.5 | 500.5000000000001 | 500.500
 (1 row)
 
 EXPLAIN (VERBOSE, COSTS OFF)
@@ -93,7 +189,7 @@ SELECT avg(c1), avg(c3), avg(c4), avg(c5), avg(c6), avg(c7) FROM mpp_ft1;
 ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
  Finalize Aggregate
    Output: avg(c1), avg(c3), avg(c4), avg(c5), avg(c6), avg(c7)
-   ->  Gather Motion 4:1  (slice1; segments: 4)
+   ->  Gather Motion 2:1  (slice1; segments: 2)
          Output: (PARTIAL avg(c1)), (PARTIAL avg(c3)), (PARTIAL avg(c4)), (PARTIAL avg(c5)), (PARTIAL avg(c6)), (PARTIAL avg(c7))
          ->  Foreign Scan
                Output: (PARTIAL avg(c1)), (PARTIAL avg(c3)), (PARTIAL avg(c4)), (PARTIAL avg(c5)), (PARTIAL avg(c6)), (PARTIAL avg(c7))
@@ -104,9 +200,9 @@ SELECT avg(c1), avg(c3), avg(c4), avg(c5), avg(c6), avg(c7) FROM mpp_ft1;
 (10 rows)
 
 SELECT avg(c1), avg(c3), avg(c4), avg(c5), avg(c6), avg(c7) FROM mpp_ft1;
-         avg          |         avg          |         avg          |        avg         |  avg   |          avg           
-----------------------+----------------------+----------------------+--------------------+--------+------------------------
- 500.5000000000000000 | 500.5000000000000000 | 500.5000000000000000 | 0.5004999694824219 | 0.5005 | 0.50050000000000000000
+         avg          |         avg          |         avg          |  avg   |        avg         |          avg           
+----------------------+----------------------+----------------------+--------+--------------------+------------------------
+ 500.5000000000000000 | 500.5000000000000000 | 500.5000000000000000 | 0.5005 | 0.5005000000000002 | 0.50050000000000000000
 (1 row)
 
 EXPLAIN (VERBOSE, COSTS OFF)
@@ -115,7 +211,7 @@ SELECT min(c1), min(c3), min(c4), min(c5), min(c6), min(c7) FROM mpp_ft1;
 ----------------------------------------------------------------------------------------------------------------------------------------
  Finalize Aggregate
    Output: min(c1), min(c3), min(c4), min(c5), min(c6), min(c7)
-   ->  Gather Motion 4:1  (slice1; segments: 4)
+   ->  Gather Motion 2:1  (slice1; segments: 2)
          Output: (PARTIAL min(c1)), (PARTIAL min(c3)), (PARTIAL min(c4)), (PARTIAL min(c5)), (PARTIAL min(c6)), (PARTIAL min(c7))
          ->  Foreign Scan
                Output: (PARTIAL min(c1)), (PARTIAL min(c3)), (PARTIAL min(c4)), (PARTIAL min(c5)), (PARTIAL min(c6)), (PARTIAL min(c7))
@@ -137,7 +233,7 @@ SELECT max(c1), max(c3), max(c4), max(c5), max(c6), max(c7) FROM mpp_ft1;
 ----------------------------------------------------------------------------------------------------------------------------------------
  Finalize Aggregate
    Output: max(c1), max(c3), max(c4), max(c5), max(c6), max(c7)
-   ->  Gather Motion 4:1  (slice1; segments: 4)
+   ->  Gather Motion 2:1  (slice1; segments: 2)
          Output: (PARTIAL max(c1)), (PARTIAL max(c3)), (PARTIAL max(c4)), (PARTIAL max(c5)), (PARTIAL max(c6)), (PARTIAL max(c7))
          ->  Foreign Scan
                Output: (PARTIAL max(c1)), (PARTIAL max(c3)), (PARTIAL max(c4)), (PARTIAL max(c5)), (PARTIAL max(c6)), (PARTIAL max(c7))
@@ -169,7 +265,7 @@ SELECT count(c1), sum(c3), avg(c4), min(c5), max(c6), count(c1) * (random() <= 1
                ->  Finalize HashAggregate
                      Output: count(c1), sum(c3), avg(c4), min(c5), max(c6), c2
                      Group Key: mpp_ft1.c2
-                     ->  Redistribute Motion 4:3  (slice2; segments: 4)
+                     ->  Redistribute Motion 2:3  (slice2; segments: 2)
                            Output: c2, (PARTIAL count(c1)), (PARTIAL sum(c3)), (PARTIAL avg(c4)), (PARTIAL min(c5)), (PARTIAL max(c6))
                            Hash Key: c2
                            ->  Foreign Scan
@@ -181,18 +277,18 @@ SELECT count(c1), sum(c3), avg(c4), min(c5), max(c6), count(c1) * (random() <= 1
 (20 rows)
 
 SELECT count(c1), sum(c3), avg(c4), min(c5), max(c6), count(c1) * (random() <= 1)::int as count2 FROM mpp_ft1 GROUP BY c2 ORDER BY c2;
- count |  sum   |         avg          |  min  |  max  | count2 
--------+--------+----------------------+-------+-------+--------
-   400 | 202000 | 505.0000000000000000 |  0.01 |     1 |    400
-   400 | 198400 | 496.0000000000000000 | 0.001 | 0.991 |    400
-   400 | 198800 | 497.0000000000000000 | 0.002 | 0.992 |    400
-   400 | 199200 | 498.0000000000000000 | 0.003 | 0.993 |    400
-   400 | 199600 | 499.0000000000000000 | 0.004 | 0.994 |    400
-   400 | 200000 | 500.0000000000000000 | 0.005 | 0.995 |    400
-   400 | 200400 | 501.0000000000000000 | 0.006 | 0.996 |    400
-   400 | 200800 | 502.0000000000000000 | 0.007 | 0.997 |    400
-   400 | 201200 | 503.0000000000000000 | 0.008 | 0.998 |    400
-   400 | 201600 | 504.0000000000000000 | 0.009 | 0.999 |    400
+ count |  sum  |         avg          |  min  |  max  | count2 
+-------+-------+----------------------+-------+-------+--------
+   100 | 50500 | 505.0000000000000000 |  0.01 |     1 |    100
+   100 | 49600 | 496.0000000000000000 | 0.001 | 0.991 |    100
+   100 | 49700 | 497.0000000000000000 | 0.002 | 0.992 |    100
+   100 | 49800 | 498.0000000000000000 | 0.003 | 0.993 |    100
+   100 | 49900 | 499.0000000000000000 | 0.004 | 0.994 |    100
+   100 | 50000 | 500.0000000000000000 | 0.005 | 0.995 |    100
+   100 | 50100 | 501.0000000000000000 | 0.006 | 0.996 |    100
+   100 | 50200 | 502.0000000000000000 | 0.007 | 0.997 |    100
+   100 | 50300 | 503.0000000000000000 | 0.008 | 0.998 |    100
+   100 | 50400 | 504.0000000000000000 | 0.009 | 0.999 |    100
 (10 rows)
 
 -- Aggregate is not pushed down as aggregation contains random()
@@ -202,7 +298,7 @@ SELECT sum(c1 * (random() <= 1)::int) as sum, avg(c1) FROM mpp_ft1;
 -----------------------------------------------------------------------------------------------------------
  Finalize Aggregate
    Output: sum((c1 * ((random() <= '1'::double precision))::integer)), avg(c1)
-   ->  Gather Motion 4:1  (slice1; segments: 4)
+   ->  Gather Motion 2:1  (slice1; segments: 2)
          Output: (PARTIAL sum((c1 * ((random() <= '1'::double precision))::integer))), (PARTIAL avg(c1))
          ->  Partial Aggregate
                Output: PARTIAL sum((c1 * ((random() <= '1'::double precision))::integer)), PARTIAL avg(c1)
@@ -214,9 +310,9 @@ SELECT sum(c1 * (random() <= 1)::int) as sum, avg(c1) FROM mpp_ft1;
 (11 rows)
 
 SELECT sum(c1 * (random() <= 1)::int) as sum, avg(c1) FROM mpp_ft1;
-   sum   |         avg          
----------+----------------------
- 2002000 | 500.5000000000000000
+  sum   |         avg          
+--------+----------------------
+ 500500 | 500.5000000000000000
 (1 row)
 
 -- GROUP BY clause having expressions
@@ -239,7 +335,7 @@ SELECT c2/2, sum(c2) * (c2/2) FROM mpp_ft1 GROUP BY c2/2 ORDER BY c2/2;
          ->  Finalize HashAggregate
                Output: ((c2 / 2)), (sum(c2) * ((c2 / 2)))
                Group Key: ((mpp_ft1.c2 / 2))
-               ->  Redistribute Motion 4:3  (slice2; segments: 4)
+               ->  Redistribute Motion 2:3  (slice2; segments: 2)
                      Output: ((c2 / 2)), (PARTIAL sum(c2)), c2
                      Hash Key: ((c2 / 2))
                      ->  Partial HashAggregate
@@ -256,10 +352,10 @@ SELECT c2/2, sum(c2) * (c2/2) FROM mpp_ft1 GROUP BY c2/2 ORDER BY c2/2;
  ?column? | ?column? 
 ----------+----------
         0 |        0
-        1 |     2000
-        2 |     7200
-        3 |    15600
-        4 |    27200
+        1 |      500
+        2 |     1800
+        3 |     3900
+        4 |     6800
 (5 rows)
 
 -- Aggregates in subquery are pushed down.
@@ -279,7 +375,7 @@ SELECT count(x.a), sum(x.a) FROM (SELECT c2 a, sum(c1) b FROM mpp_ft1 GROUP BY c
                      ->  Finalize HashAggregate
                            Output: mpp_ft1.c2, sum(mpp_ft1.c1), (sqrt((mpp_ft1.c1)::double precision))
                            Group Key: mpp_ft1.c2, (sqrt((mpp_ft1.c1)::double precision))
-                           ->  Redistribute Motion 4:3  (slice2; segments: 4)
+                           ->  Redistribute Motion 2:3  (slice2; segments: 2)
                                  Output: mpp_ft1.c2, (sqrt((mpp_ft1.c1)::double precision)), (PARTIAL sum(mpp_ft1.c1))
                                  Hash Key: mpp_ft1.c2, (sqrt((mpp_ft1.c1)::double precision))
                                  ->  Foreign Scan
@@ -310,7 +406,7 @@ SELECT c2 * (random() <= 1)::int as sum1, sum(c1) * c2 as sum2 FROM mpp_ft1 GROU
          ->  Finalize HashAggregate
                Output: (c2 * ((random() <= '1'::double precision))::integer), (sum(c1) * c2), c2
                Group Key: mpp_ft1.c2
-               ->  Redistribute Motion 4:3  (slice2; segments: 4)
+               ->  Redistribute Motion 2:3  (slice2; segments: 2)
                      Output: c2, (PARTIAL sum(c1))
                      Hash Key: c2
                      ->  Foreign Scan
@@ -322,18 +418,18 @@ SELECT c2 * (random() <= 1)::int as sum1, sum(c1) * c2 as sum2 FROM mpp_ft1 GROU
 (18 rows)
 
 SELECT c2 * (random() <= 1)::int as sum1, sum(c1) * c2 as sum2 FROM mpp_ft1 GROUP BY c2 ORDER BY 1, 2;
- sum1 |  sum2   
-------+---------
-    0 |       0
-    1 |  198400
-    2 |  397600
-    3 |  597600
-    4 |  798400
-    5 | 1000000
-    6 | 1202400
-    7 | 1405600
-    8 | 1609600
-    9 | 1814400
+ sum1 |  sum2  
+------+--------
+    0 |      0
+    1 |  49600
+    2 |  99400
+    3 | 149400
+    4 | 199600
+    5 | 250000
+    6 | 300600
+    7 | 351400
+    8 | 402400
+    9 | 453600
 (10 rows)
 
 -- Aggregate with unshippable GROUP BY clause are not pushed
@@ -350,7 +446,7 @@ SELECT c2 * (random() <= 1)::int as c2 FROM mpp_ft1 GROUP BY c2 * (random() <= 1
          ->  HashAggregate
                Output: ((c2 * ((random() <= '1'::double precision))::integer))
                Group Key: ((mpp_ft1.c2 * ((random() <= '1'::double precision))::integer))
-               ->  Redistribute Motion 4:3  (slice2; segments: 4)
+               ->  Redistribute Motion 2:3  (slice2; segments: 2)
                      Output: ((c2 * ((random() <= '1'::double precision))::integer))
                      Hash Key: ((c2 * ((random() <= '1'::double precision))::integer))
                      ->  HashAggregate
@@ -392,7 +488,7 @@ SELECT count(c2) w, c2 x, 5 y, 7.0 z FROM mpp_ft1 GROUP BY 2, y, 9.0::int ORDER 
          ->  Finalize HashAggregate
                Output: count(c2), c2, (5), 7.0, (9)
                Group Key: mpp_ft1.c2, 5, 9
-               ->  Redistribute Motion 4:3  (slice2; segments: 4)
+               ->  Redistribute Motion 2:3  (slice2; segments: 2)
                      Output: c2, 5, 9, (PARTIAL count(c2))
                      Hash Key: c2, 5, 9
                      ->  Foreign Scan
@@ -406,16 +502,16 @@ SELECT count(c2) w, c2 x, 5 y, 7.0 z FROM mpp_ft1 GROUP BY 2, y, 9.0::int ORDER 
 SELECT count(c2) w, c2 x, 5 y, 7.0 z FROM mpp_ft1 GROUP BY 2, y, 9.0::int ORDER BY 2;
   w  | x | y |  z  
 -----+---+---+-----
- 400 | 0 | 5 | 7.0
- 400 | 1 | 5 | 7.0
- 400 | 2 | 5 | 7.0
- 400 | 3 | 5 | 7.0
- 400 | 4 | 5 | 7.0
- 400 | 5 | 5 | 7.0
- 400 | 6 | 5 | 7.0
- 400 | 7 | 5 | 7.0
- 400 | 8 | 5 | 7.0
- 400 | 9 | 5 | 7.0
+ 100 | 0 | 5 | 7.0
+ 100 | 1 | 5 | 7.0
+ 100 | 2 | 5 | 7.0
+ 100 | 3 | 5 | 7.0
+ 100 | 4 | 5 | 7.0
+ 100 | 5 | 5 | 7.0
+ 100 | 6 | 5 | 7.0
+ 100 | 7 | 5 | 7.0
+ 100 | 8 | 5 | 7.0
+ 100 | 9 | 5 | 7.0
 (10 rows)
 
 -- GROUP BY clause referring to same column multiple times
@@ -433,7 +529,7 @@ SELECT c2, c2 FROM mpp_ft1 WHERE c2 > 6 GROUP BY 1, 2 ORDER BY sum(c1);
          ->  Finalize HashAggregate
                Output: c2, c2, sum(c1)
                Group Key: mpp_ft1.c2, mpp_ft1.c2
-               ->  Redistribute Motion 4:3  (slice2; segments: 4)
+               ->  Redistribute Motion 2:3  (slice2; segments: 2)
                      Output: c2, c2, (PARTIAL sum(c1))
                      Hash Key: c2, c2
                      ->  Foreign Scan
@@ -455,9 +551,9 @@ SELECT c2, c2 FROM mpp_ft1 WHERE c2 > 6 GROUP BY 1, 2 ORDER BY sum(c1);
 -- Testing HAVING clause
 -- It's unsafe for partial agg to push down HAVING clause.
 EXPLAIN (VERBOSE, COSTS OFF)
-SELECT c2, sum(c1) FROM mpp_ft1 GROUP BY c2 HAVING avg(c1) < 500 AND sum(c1) < 199200 ORDER BY c2;
-                                        QUERY PLAN                                         
--------------------------------------------------------------------------------------------
+SELECT c2, sum(c1) FROM mpp_ft1 GROUP BY c2 HAVING avg(c1) < 500 AND sum(c1) < 49800 ORDER BY c2;
+                                        QUERY PLAN                                        
+------------------------------------------------------------------------------------------
  Gather Motion 3:1  (slice1; segments: 3)
    Output: c2, (sum(c1))
    Merge Key: c2
@@ -467,8 +563,8 @@ SELECT c2, sum(c1) FROM mpp_ft1 GROUP BY c2 HAVING avg(c1) < 500 AND sum(c1) < 1
          ->  Finalize HashAggregate
                Output: c2, sum(c1)
                Group Key: mpp_ft1.c2
-               Filter: ((avg(mpp_ft1.c1) < '500'::numeric) AND (sum(mpp_ft1.c1) < 199200))
-               ->  Redistribute Motion 4:3  (slice2; segments: 4)
+               Filter: ((avg(mpp_ft1.c1) < '500'::numeric) AND (sum(mpp_ft1.c1) < 49800))
+               ->  Redistribute Motion 2:3  (slice2; segments: 2)
                      Output: c2, (PARTIAL sum(c1)), (PARTIAL avg(c1))
                      Hash Key: c2
                      ->  Partial HashAggregate
@@ -481,25 +577,25 @@ SELECT c2, sum(c1) FROM mpp_ft1 GROUP BY c2 HAVING avg(c1) < 500 AND sum(c1) < 1
  Settings: gp_enable_minmax_optimization = 'off', optimizer = 'off'
 (21 rows)
 
-SELECT c2, sum(c1) FROM mpp_ft1 GROUP BY c2 HAVING avg(c1) < 500 AND sum(c1) < 199200 ORDER BY c2;
- c2 |  sum   
-----+--------
-  1 | 198400
-  2 | 198800
+SELECT c2, sum(c1) FROM mpp_ft1 GROUP BY c2 HAVING avg(c1) < 500 AND sum(c1) < 49800 ORDER BY c2;
+ c2 |  sum  
+----+-------
+  1 | 49600
+  2 | 49700
 (2 rows)
 
 -- Remote aggregate in combination with a local Param (for the output
 -- of an initplan) can be trouble, per bug #15781
 EXPLAIN (VERBOSE, COSTS OFF)
 SELECT exists(SELECT 1 FROM pg_aggregate), sum(c1) FROM mpp_ft1;
-                          QUERY PLAN                           
----------------------------------------------------------------
+                             QUERY PLAN                             
+--------------------------------------------------------------------
  Finalize Aggregate
    Output: $0, sum(mpp_ft1.c1)
    InitPlan 1 (returns $0)  (slice2)
      ->  Seq Scan on pg_catalog.pg_aggregate
            Output: 1
-   ->  Gather Motion 4:1  (slice1; segments: 4)
+   ->  Gather Motion 2:1  (slice1; segments: 2)
          Output: (PARTIAL sum(mpp_ft1.c1))
          ->  Foreign Scan
                Output: (PARTIAL sum(mpp_ft1.c1))
@@ -510,40 +606,37 @@ SELECT exists(SELECT 1 FROM pg_aggregate), sum(c1) FROM mpp_ft1;
 (13 rows)
 
 SELECT exists(SELECT 1 FROM pg_aggregate), sum(c1) FROM mpp_ft1;
- exists |   sum   
---------+---------
- t      | 2002000
+ exists |  sum   
+--------+--------
+ t      | 500500
 (1 row)
 
 EXPLAIN (VERBOSE, COSTS OFF)
 SELECT exists(SELECT 1 FROM pg_aggregate), sum(c1) FROM mpp_ft1 group by 1;
-                              QUERY PLAN                              
-----------------------------------------------------------------------
- Gather Motion 3:1  (slice1; segments: 3)
-   Output: ($0), (sum(mpp_ft1.c1))
-   InitPlan 1 (returns $0)  (slice3)
+                             QUERY PLAN                             
+--------------------------------------------------------------------
+ Finalize GroupAggregate
+   Output: ($0), sum(mpp_ft1.c1)
+   Group Key: ($0)
+   InitPlan 1 (returns $0)  (slice2)
      ->  Seq Scan on pg_catalog.pg_aggregate
            Output: 1
-   ->  Finalize GroupAggregate
-         Output: ($0), sum(mpp_ft1.c1)
-         Group Key: ($0)
-         ->  Redistribute Motion 4:3  (slice2; segments: 4)
-               Output: ($0), (PARTIAL sum(mpp_ft1.c1))
-               Hash Key: ($0)
-               ->  Partial GroupAggregate
-                     Output: ($0), PARTIAL sum(mpp_ft1.c1)
-                     Group Key: $0
-                     ->  Foreign Scan on public.mpp_ft1
-                           Output: $0, mpp_ft1.c1
-                           Remote SQL: SELECT c1 FROM "MPP_S 1"."T 1"
+   ->  Gather Motion 2:1  (slice1; segments: 2)
+         Output: ($0), (PARTIAL sum(mpp_ft1.c1))
+         ->  Partial GroupAggregate
+               Output: ($0), PARTIAL sum(mpp_ft1.c1)
+               Group Key: $0
+               ->  Foreign Scan on public.mpp_ft1
+                     Output: $0, mpp_ft1.c1
+                     Remote SQL: SELECT c1 FROM "MPP_S 1"."T 1"
  Optimizer: Postgres query optimizer
  Settings: gp_enable_minmax_optimization = 'off', optimizer = 'off'
-(19 rows)
+(16 rows)
 
 SELECT exists(SELECT 1 FROM pg_aggregate), sum(c1) FROM mpp_ft1 group by 1;
- exists |   sum   
---------+---------
- t      | 2002000
+ exists |  sum   
+--------+--------
+ t      | 500500
 (1 row)
 
 -- Testing ORDER BY, DISTINCT, FILTER within aggregates
@@ -559,7 +652,7 @@ SELECT array_agg(c1 ORDER BY c1) FROM mpp_ft1 WHERE c1 < 100 GROUP BY c2 ORDER B
    ->  GroupAggregate
          Output: array_agg(c1 ORDER BY c1), c2
          Group Key: mpp_ft1.c2
-         ->  Gather Motion 4:1  (slice1; segments: 4)
+         ->  Gather Motion 2:1  (slice1; segments: 2)
                Output: c2, c1
                Merge Key: c2
                ->  Foreign Scan on public.mpp_ft1
@@ -570,18 +663,18 @@ SELECT array_agg(c1 ORDER BY c1) FROM mpp_ft1 WHERE c1 < 100 GROUP BY c2 ORDER B
 (14 rows)
 
 SELECT array_agg(c1 ORDER BY c1) FROM mpp_ft1 WHERE c1 < 100 GROUP BY c2 ORDER BY 1;
-                                                       array_agg                                                       
------------------------------------------------------------------------------------------------------------------------
- {1,1,1,1,11,11,11,11,21,21,21,21,31,31,31,31,41,41,41,41,51,51,51,51,61,61,61,61,71,71,71,71,81,81,81,81,91,91,91,91}
- {2,2,2,2,12,12,12,12,22,22,22,22,32,32,32,32,42,42,42,42,52,52,52,52,62,62,62,62,72,72,72,72,82,82,82,82,92,92,92,92}
- {3,3,3,3,13,13,13,13,23,23,23,23,33,33,33,33,43,43,43,43,53,53,53,53,63,63,63,63,73,73,73,73,83,83,83,83,93,93,93,93}
- {4,4,4,4,14,14,14,14,24,24,24,24,34,34,34,34,44,44,44,44,54,54,54,54,64,64,64,64,74,74,74,74,84,84,84,84,94,94,94,94}
- {5,5,5,5,15,15,15,15,25,25,25,25,35,35,35,35,45,45,45,45,55,55,55,55,65,65,65,65,75,75,75,75,85,85,85,85,95,95,95,95}
- {6,6,6,6,16,16,16,16,26,26,26,26,36,36,36,36,46,46,46,46,56,56,56,56,66,66,66,66,76,76,76,76,86,86,86,86,96,96,96,96}
- {7,7,7,7,17,17,17,17,27,27,27,27,37,37,37,37,47,47,47,47,57,57,57,57,67,67,67,67,77,77,77,77,87,87,87,87,97,97,97,97}
- {8,8,8,8,18,18,18,18,28,28,28,28,38,38,38,38,48,48,48,48,58,58,58,58,68,68,68,68,78,78,78,78,88,88,88,88,98,98,98,98}
- {9,9,9,9,19,19,19,19,29,29,29,29,39,39,39,39,49,49,49,49,59,59,59,59,69,69,69,69,79,79,79,79,89,89,89,89,99,99,99,99}
- {10,10,10,10,20,20,20,20,30,30,30,30,40,40,40,40,50,50,50,50,60,60,60,60,70,70,70,70,80,80,80,80,90,90,90,90}
+           array_agg            
+--------------------------------
+ {1,11,21,31,41,51,61,71,81,91}
+ {2,12,22,32,42,52,62,72,82,92}
+ {3,13,23,33,43,53,63,73,83,93}
+ {4,14,24,34,44,54,64,74,84,94}
+ {5,15,25,35,45,55,65,75,85,95}
+ {6,16,26,36,46,56,66,76,86,96}
+ {7,17,27,37,47,57,67,77,87,97}
+ {8,18,28,38,48,58,68,78,88,98}
+ {9,19,29,39,49,59,69,79,89,99}
+ {10,20,30,40,50,60,70,80,90}
 (10 rows)
 
 -- FILTER within aggregate
@@ -598,7 +691,7 @@ SELECT sum(c1) FILTER (WHERE c1 < 100 AND c2 > 5) FROM mpp_ft1 GROUP BY c2 ORDER
          ->  Finalize HashAggregate
                Output: sum(c1) FILTER (WHERE ((c1 < 100) AND (c2 > 5))), c2
                Group Key: mpp_ft1.c2
-               ->  Redistribute Motion 4:3  (slice2; segments: 4)
+               ->  Redistribute Motion 2:3  (slice2; segments: 2)
                      Output: c2, (PARTIAL sum(c1) FILTER (WHERE ((c1 < 100) AND (c2 > 5))))
                      Hash Key: c2
                      ->  Foreign Scan
@@ -610,18 +703,18 @@ SELECT sum(c1) FILTER (WHERE c1 < 100 AND c2 > 5) FROM mpp_ft1 GROUP BY c2 ORDER
 (18 rows)
 
 SELECT sum(c1) FILTER (WHERE c1 < 100 AND c2 > 5) FROM mpp_ft1 GROUP BY c2 ORDER BY 1 nulls last;
- sum  
-------
- 2040
- 2080
- 2120
- 2160
-     
-     
-     
-     
-     
-     
+ sum 
+-----
+ 510
+ 520
+ 530
+ 540
+    
+    
+    
+    
+    
+    
 (10 rows)
 
 -- DISTINCT, ORDER BY and FILTER within aggregate
@@ -635,7 +728,7 @@ SELECT sum(c1%3), sum(DISTINCT c1%3 ORDER BY c1%3) FILTER (WHERE c1%3 < 2), c2 F
    ->  GroupAggregate
          Output: sum((c1 % 3)), sum(DISTINCT (c1 % 3) ORDER BY (c1 % 3)) FILTER (WHERE ((c1 % 3) < 2)), c2
          Group Key: mpp_ft1.c2
-         ->  Redistribute Motion 4:3  (slice2; segments: 4)
+         ->  Redistribute Motion 2:3  (slice2; segments: 2)
                Output: c2, c1
                Hash Key: c2
                ->  Foreign Scan on public.mpp_ft1
@@ -648,7 +741,7 @@ SELECT sum(c1%3), sum(DISTINCT c1%3 ORDER BY c1%3) FILTER (WHERE c1%3 < 2), c2 F
 SELECT sum(c1%3), sum(DISTINCT c1%3 ORDER BY c1%3) FILTER (WHERE c1%3 < 2), c2 FROM mpp_ft1 WHERE c2 = 6 GROUP BY c2;
  sum | sum | c2 
 -----+-----+----
- 396 |   1 |  6
+  99 |   1 |  6
 (1 row)
 
 -- Aggregate not pushed down as FILTER condition is not pushable
@@ -665,7 +758,7 @@ SELECT sum(c1) FILTER (WHERE (c1 / c1) * random() <= 1) FROM mpp_ft1 GROUP BY c2
          ->  Finalize HashAggregate
                Output: sum(c1) FILTER (WHERE ((((c1 / c1))::double precision * random()) <= '1'::double precision)), c2
                Group Key: mpp_ft1.c2
-               ->  Redistribute Motion 4:3  (slice2; segments: 4)
+               ->  Redistribute Motion 2:3  (slice2; segments: 2)
                      Output: c2, (PARTIAL sum(c1) FILTER (WHERE ((((c1 / c1))::double precision * random()) <= '1'::double precision)))
                      Hash Key: c2
                      ->  Partial HashAggregate
@@ -679,29 +772,29 @@ SELECT sum(c1) FILTER (WHERE (c1 / c1) * random() <= 1) FROM mpp_ft1 GROUP BY c2
 (20 rows)
 
 SELECT sum(c1) FILTER (WHERE (c1 / c1) * random() <= 1) FROM mpp_ft1 GROUP BY c2 ORDER BY 1;
-  sum   
---------
- 198400
- 198800
- 199200
- 199600
- 200000
- 200400
- 200800
- 201200
- 201600
- 202000
+  sum  
+-------
+ 49600
+ 49700
+ 49800
+ 49900
+ 50000
+ 50100
+ 50200
+ 50300
+ 50400
+ 50500
 (10 rows)
 
 -- Set use_remote_estimate to true
 ALTER FOREIGN TABLE mpp_ft1 OPTIONS(add use_remote_estimate 'true');
 EXPLAIN (VERBOSE, COSTS OFF)
 SELECT min(c5) FROM mpp_ft1;
-                          QUERY PLAN                           
----------------------------------------------------------------
+                             QUERY PLAN                             
+--------------------------------------------------------------------
  Finalize Aggregate
    Output: min(c5)
-   ->  Gather Motion 4:1  (slice1; segments: 4)
+   ->  Gather Motion 2:1  (slice1; segments: 2)
          Output: (PARTIAL min(c5))
          ->  Foreign Scan
                Output: (PARTIAL min(c5))
@@ -724,7 +817,7 @@ SELECT count(c1), max(c6) FROM mpp_ft1 GROUP BY c2;
  Finalize GroupAggregate
    Output: count(c1), max(c6), c2
    Group Key: mpp_ft1.c2
-   ->  Gather Motion 4:1  (slice1; segments: 4)
+   ->  Gather Motion 2:1  (slice1; segments: 2)
          Output: c2, (PARTIAL count(c1)), (PARTIAL max(c6))
          Merge Key: c2
          ->  Sort
@@ -741,16 +834,16 @@ SELECT count(c1), max(c6) FROM mpp_ft1 GROUP BY c2;
 SELECT count(c1), max(c6) FROM mpp_ft1 GROUP BY c2;
  count |  max  
 -------+-------
-   400 |     1
-   400 | 0.991
-   400 | 0.992
-   400 | 0.993
-   400 | 0.994
-   400 | 0.995
-   400 | 0.996
-   400 | 0.997
-   400 | 0.998
-   400 | 0.999
+   100 |     1
+   100 | 0.991
+   100 | 0.992
+   100 | 0.993
+   100 | 0.994
+   100 | 0.995
+   100 | 0.996
+   100 | 0.997
+   100 | 0.998
+   100 | 0.999
 (10 rows)
 
 EXPLAIN (VERBOSE, COSTS OFF)
@@ -760,7 +853,7 @@ SELECT count(c1), sum(c3), avg(c4), min(c5), max(c6), count(c1) * (random() <= 1
  Finalize GroupAggregate
    Output: count(c1), sum(c3), avg(c4), min(c5), max(c6), (count(c1) * ((random() <= '1'::double precision))::integer), c2
    Group Key: mpp_ft1.c2
-   ->  Gather Motion 4:1  (slice1; segments: 4)
+   ->  Gather Motion 2:1  (slice1; segments: 2)
          Output: c2, (PARTIAL count(c1)), (PARTIAL sum(c3)), (PARTIAL avg(c4)), (PARTIAL min(c5)), (PARTIAL max(c6))
          Merge Key: c2
          ->  Sort
@@ -775,18 +868,18 @@ SELECT count(c1), sum(c3), avg(c4), min(c5), max(c6), count(c1) * (random() <= 1
 (15 rows)
 
 SELECT count(c1), sum(c3), avg(c4), min(c5), max(c6), count(c1) * (random() <= 1)::int as count2 FROM mpp_ft1 GROUP BY c2 ORDER BY c2;
- count |  sum   |         avg          |  min  |  max  | count2 
--------+--------+----------------------+-------+-------+--------
-   400 | 202000 | 505.0000000000000000 |  0.01 |     1 |    400
-   400 | 198400 | 496.0000000000000000 | 0.001 | 0.991 |    400
-   400 | 198800 | 497.0000000000000000 | 0.002 | 0.992 |    400
-   400 | 199200 | 498.0000000000000000 | 0.003 | 0.993 |    400
-   400 | 199600 | 499.0000000000000000 | 0.004 | 0.994 |    400
-   400 | 200000 | 500.0000000000000000 | 0.005 | 0.995 |    400
-   400 | 200400 | 501.0000000000000000 | 0.006 | 0.996 |    400
-   400 | 200800 | 502.0000000000000000 | 0.007 | 0.997 |    400
-   400 | 201200 | 503.0000000000000000 | 0.008 | 0.998 |    400
-   400 | 201600 | 504.0000000000000000 | 0.009 | 0.999 |    400
+ count |  sum  |         avg          |  min  |  max  | count2 
+-------+-------+----------------------+-------+-------+--------
+   100 | 50500 | 505.0000000000000000 |  0.01 |     1 |    100
+   100 | 49600 | 496.0000000000000000 | 0.001 | 0.991 |    100
+   100 | 49700 | 497.0000000000000000 | 0.002 | 0.992 |    100
+   100 | 49800 | 498.0000000000000000 | 0.003 | 0.993 |    100
+   100 | 49900 | 499.0000000000000000 | 0.004 | 0.994 |    100
+   100 | 50000 | 500.0000000000000000 | 0.005 | 0.995 |    100
+   100 | 50100 | 501.0000000000000000 | 0.006 | 0.996 |    100
+   100 | 50200 | 502.0000000000000000 | 0.007 | 0.997 |    100
+   100 | 50300 | 503.0000000000000000 | 0.008 | 0.998 |    100
+   100 | 50400 | 504.0000000000000000 | 0.009 | 0.999 |    100
 (10 rows)
 
 ALTER FOREIGN TABLE mpp_ft1 OPTIONS(set use_remote_estimate 'false');
@@ -801,7 +894,7 @@ SELECT count(c1), max(c6) FROM mpp_ft1 GROUP BY c2 order by c2 limit 3;
    ->  Finalize GroupAggregate
          Output: count(c1), max(c6), c2
          Group Key: mpp_ft1.c2
-         ->  Gather Motion 4:1  (slice1; segments: 4)
+         ->  Gather Motion 2:1  (slice1; segments: 2)
                Output: c2, (PARTIAL count(c1)), (PARTIAL max(c6))
                Merge Key: c2
                ->  Partial GroupAggregate
@@ -817,9 +910,9 @@ SELECT count(c1), max(c6) FROM mpp_ft1 GROUP BY c2 order by c2 limit 3;
 SELECT count(c1), max(c6) FROM mpp_ft1 GROUP BY c2 order by c2 limit 3;
  count |  max  
 -------+-------
-   400 |     1
-   400 | 0.991
-   400 | 0.992
+   100 |     1
+   100 | 0.991
+   100 | 0.992
 (3 rows)
 
 -- limit with normal scan without agg functions
@@ -829,7 +922,7 @@ SELECT c1, c2 FROM mpp_ft1 order by c1 limit 3;
 -----------------------------------------------------------------------------------------------
  Limit
    Output: c1, c2
-   ->  Gather Motion 4:1  (slice1; segments: 4)
+   ->  Gather Motion 2:1  (slice1; segments: 2)
          Output: c1, c2
          Merge Key: c1
          ->  Limit
@@ -845,8 +938,8 @@ SELECT c1, c2 FROM mpp_ft1 order by c1 limit 3;
  c1 | c2 
 ----+----
   1 |  1
-  1 |  1
-  1 |  1
+  2 |  2
+  3 |  3
 (3 rows)
 
 -- join is not safe to pushed down when mpp_execute is set to 'all segments'
@@ -856,13 +949,13 @@ SELECT count(*), sum(t1.c1), avg(t2.c2) FROM mpp_ft1 t1 inner join mpp_ft1 t2 on
 -------------------------------------------------------------------------------------------------
  Finalize Aggregate
    Output: count(*), sum(t1.c1), avg(t2.c2)
-   ->  Gather Motion 4:1  (slice1; segments: 4)
+   ->  Gather Motion 2:1  (slice1; segments: 2)
          Output: (PARTIAL count(*)), (PARTIAL sum(t1.c1)), (PARTIAL avg(t2.c2))
          ->  Partial Aggregate
                Output: PARTIAL count(*), PARTIAL sum(t1.c1), PARTIAL avg(t2.c2)
                ->  Nested Loop
                      Output: t1.c1, t2.c2
-                     ->  Broadcast Motion 4:4  (slice2; segments: 4)
+                     ->  Broadcast Motion 2:2  (slice2; segments: 2)
                            Output: t1.c1
                            ->  Foreign Scan on public.mpp_ft1 t1
                                  Output: t1.c1
@@ -879,6 +972,16 @@ SELECT count(*), sum(t1.c1), avg(t2.c2) FROM mpp_ft1 t1 inner join mpp_ft1 t2 on
 SELECT count(*), sum(t1.c1), avg(t2.c2) FROM mpp_ft1 t1 inner join mpp_ft1 t2 on (t1.c1 = t2.c1) where t1.c1 = 2;
  count | sum |        avg         
 -------+-----+--------------------
-    16 |  32 | 2.0000000000000000
+     1 |   2 | 2.0000000000000000
 (1 row)
 
+-- ===================================================================
+-- Modify table
+-- ===================================================================
+-- Now we don't support modify table when there are multiple pg servers
+INSERT INTO mpp_ft1 VALUES (0, 0, 0, 0, 0, 0, 0);
+ERROR:  foreign table "mpp_ft1" does not allow inserts
+UPDATE mpp_ft1 SET c1 = 0;
+ERROR:  foreign table "mpp_ft1" does not allow updates
+DELETE FROM mpp_ft1;
+ERROR:  foreign table "mpp_ft1" does not allow deletes
