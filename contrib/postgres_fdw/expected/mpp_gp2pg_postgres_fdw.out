@@ -1,0 +1,137 @@
+-- This file is used to test mpp pusdown.
+-- ===================================================================
+-- create FDW objects
+-- ===================================================================
+SET timezone = 'PST8PDT';
+SET optimizer_trace_fallback = on;
+SET optimizer = off;
+-- If gp_enable_minmax_optimization is on, it won't generate aggregate functions pushdown plan.
+SET gp_enable_minmax_optimization = off;
+-- Clean
+-- start_ignore
+DROP EXTENSION IF EXISTS postgres_fdw CASCADE;
+NOTICE:  drop cascades to 49 other objects
+DETAIL:  drop cascades to server testserver1
+drop cascades to user mapping for public on server testserver1
+drop cascades to server pgserver
+drop cascades to user mapping for gpadmin on server pgserver
+drop cascades to foreign table ft1
+drop cascades to foreign table ft2
+drop cascades to foreign table ft4
+drop cascades to foreign table ft5
+drop cascades to foreign table ft3
+drop cascades to foreign table rem1
+drop cascades to foreign table grem1
+drop cascades to foreign table rem2
+drop cascades to foreign table import_dest1.t1
+drop cascades to foreign table import_dest1.t2
+drop cascades to foreign table import_dest1.t3
+drop cascades to foreign table import_dest1.t4
+drop cascades to foreign table import_dest1."x 4"
+drop cascades to foreign table import_dest1."x 5"
+drop cascades to foreign table import_dest1."x 6"
+drop cascades to foreign table import_dest2.t1
+drop cascades to foreign table import_dest2.t2
+drop cascades to foreign table import_dest2.t3
+drop cascades to foreign table import_dest2.t4
+drop cascades to foreign table import_dest2."x 4"
+drop cascades to foreign table import_dest2."x 5"
+drop cascades to foreign table import_dest2."x 6"
+drop cascades to foreign table import_dest3.t1
+drop cascades to foreign table import_dest3.t2
+drop cascades to foreign table import_dest3.t3
+drop cascades to foreign table import_dest3.t4
+drop cascades to foreign table import_dest3."x 4"
+drop cascades to foreign table import_dest3."x 5"
+drop cascades to foreign table import_dest3."x 6"
+drop cascades to foreign table import_dest4.t1
+drop cascades to foreign table import_dest4.t2
+drop cascades to foreign table import_dest4.t3
+drop cascades to foreign table import_dest4.t4
+drop cascades to foreign table import_dest4."x 5"
+drop cascades to foreign table import_dest4."x 6"
+drop cascades to foreign table ftprt1_p1
+drop cascades to foreign table ftprt1_p2
+drop cascades to foreign table ftprt2_p1
+drop cascades to foreign table ftprt2_p2
+drop cascades to foreign table fpagg_tab_p1
+drop cascades to foreign table fpagg_tab_p2
+drop cascades to foreign table fpagg_tab_p3
+drop cascades to server pgserver2
+drop cascades to user mapping for gpadmin on server pgserver2
+drop cascades to foreign table ft6
+-- end_ignore
+CREATE EXTENSION postgres_fdw;
+CREATE SERVER pgserver FOREIGN DATA WRAPPER postgres_fdw
+  OPTIONS (dbname 'contrib_regression', multi_hosts 'localhost localhost',
+           multi_ports '5432 5555', num_segments '2', mpp_execute 'all segments');
+CREATE USER MAPPING FOR CURRENT_USER SERVER pgserver;
+-- ===================================================================
+-- create objects used through FDW pgserver server
+-- ===================================================================
+-- remote postgres server 1 -- listening port 5432
+\! env PGOPTIONS='' psql -p 5432 contrib_regression -f sql/postgres_sql/mpp_gp2pg_postgres_init_1.sql
+SET
+CREATE SCHEMA
+CREATE TABLE
+ALTER TABLE
+INSERT 0 500
+UPDATE 500
+ANALYZE
+-- remote postgres server 2 -- listening port 5555
+\! env PGOPTIONS='' psql -p 5555 contrib_regression -f sql/postgres_sql/mpp_gp2pg_postgres_init_2.sql
+SET
+CREATE SCHEMA
+CREATE TABLE
+ALTER TABLE
+INSERT 0 500
+UPDATE 500
+ANALYZE
+-- ===================================================================
+-- create foreign tables
+-- ===================================================================
+CREATE FOREIGN TABLE mpp_ft1 (
+	c1 int,
+	c2 int,
+	c3 smallint,
+	c4 bigint,
+	c5 real,
+	c6 double precision,
+	c7 numeric
+) SERVER pgserver OPTIONS (schema_name 'MPP_S 1', table_name 'T 1');
+-- ===================================================================
+-- tests for validator
+-- ===================================================================
+CREATE SERVER testserver FOREIGN DATA WRAPPER postgres_fdw
+  OPTIONS (dbname 'contrib_regression', multi_hosts 'localhost localhost',
+           multi_ports '5432', num_segments '2', mpp_execute 'all segments');
+ERROR:  the number of multi_hosts and multi_ports is not same.
+-- ===================================================================
+-- Simple queries
+-- ===================================================================
+EXPLAIN VERBOSE SELECT * FROM mpp_ft1;
+                                      QUERY PLAN                                      
+--------------------------------------------------------------------------------------
+ Gather Motion 2:1  (slice1; segments: 2)  (cost=100.00..2330.00 rows=71000 width=62)
+   Output: c1, c2, c3, c4, c5, c6, c7
+   ->  Foreign Scan on public.mpp_ft1  (cost=100.00..1265.00 rows=35500 width=62)
+         Output: c1, c2, c3, c4, c5, c6, c7
+         Remote SQL: SELECT c1, c2, c3, c4, c5, c6, c7 FROM "MPP_S 1"."T 1"
+ Optimizer: Postgres query optimizer
+ Settings: gp_enable_minmax_optimization = 'off', optimizer = 'off'
+(7 rows)
+
+ALTER FOREIGN TABLE mpp_ft1 OPTIONS (add use_remote_estimate 'true');
+EXPLAIN VERBOSE SELECT * FROM mpp_ft1;
+                                      QUERY PLAN                                       
+---------------------------------------------------------------------------------------
+ Gather Motion 2:1  (slice1; segments: 2)  (cost=100.00..176.00 rows=2000 width=32836)
+   Output: c1, c2, c3, c4, c5, c6, c7
+   ->  Foreign Scan on public.mpp_ft1  (cost=100.00..146.00 rows=1000 width=32836)
+         Output: c1, c2, c3, c4, c5, c6, c7
+         Remote SQL: SELECT c1, c2, c3, c4, c5, c6, c7 FROM "MPP_S 1"."T 1"
+ Optimizer: Postgres query optimizer
+ Settings: gp_enable_minmax_optimization = 'off', optimizer = 'off'
+(7 rows)
+
+ALTER FOREIGN TABLE mpp_ft1 OPTIONS (drop use_remote_estimate);

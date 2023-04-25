@@ -25,6 +25,8 @@
 #include "utils/inval.h"
 #include "utils/memutils.h"
 #include "utils/syscache.h"
+#include "commands/defrem.h"
+#include <sys/param.h>
 
 
 /*
@@ -43,7 +45,12 @@
  * ourselves, so that rolling back a subtransaction will kill the right
  * queries and not the wrong ones.
  */
-typedef Oid ConnCacheKey;
+typedef struct ConnCacheKey
+{
+	Oid		umid;							/* Oid of user mapping */
+	char 	hostname[MAXHOSTNAMELEN];		/* hostname of remote server */
+	int 	port;							/* port of remote server */
+} ConnCacheKey;
 
 typedef struct ConnCacheEntry
 {
@@ -104,11 +111,13 @@ static bool pgfdw_get_cleanup_result(PGconn *conn, TimestampTz endtime,
  * (not even on error), we need this flag to cue manual cleanup.
  */
 PGconn *
-GetConnection(UserMapping *user, bool will_prep_stmt)
+GetConnection(ForeignServer *server, UserMapping *user, bool will_prep_stmt)
 {
 	bool		found;
 	ConnCacheEntry *entry;
 	ConnCacheKey key;
+
+	memset(&key, 0, sizeof(ConnCacheKey));
 
 	/* First time through, initialize connection cache hashtable */
 	if (ConnectionHash == NULL)
@@ -140,7 +149,19 @@ GetConnection(UserMapping *user, bool will_prep_stmt)
 	xact_got_connection = true;
 
 	/* Create hash key for the entry.  Assume no pad bytes in key struct */
-	key = user->umid;
+	key.umid = user->umid;
+	ListCell   *lc = NULL;
+	foreach(lc, server->options)
+	{
+		DefElem    *d = (DefElem *) lfirst(lc);
+		if (strcmp(d->defname, "host") == 0)
+		{
+			char *host = defGetString(d);
+			strncpy(key.hostname, host, MAXHOSTNAMELEN);
+		}
+		else if(strcmp(d->defname, "port") == 0)
+			key.port = atoi(defGetString(d));
+	}
 
 	/*
 	 * Find or create cached entry for requested connection.
@@ -182,8 +203,6 @@ GetConnection(UserMapping *user, bool will_prep_stmt)
 	 */
 	if (entry->conn == NULL)
 	{
-		ForeignServer *server = GetForeignServer(user->serverid);
-
 		/* Reset all transient state fields, to be sure all are clean */
 		entry->xact_depth = 0;
 		entry->have_prep_stmt = false;
@@ -1019,9 +1038,9 @@ pgfdw_reject_incomplete_xact_state_change(ConnCacheEntry *entry)
 
 	/* find server name to be shown in the message below */
 	tup = SearchSysCache1(USERMAPPINGOID,
-						  ObjectIdGetDatum(entry->key));
+						  ObjectIdGetDatum(entry->key.umid));
 	if (!HeapTupleIsValid(tup))
-		elog(ERROR, "cache lookup failed for user mapping %u", entry->key);
+		elog(ERROR, "cache lookup failed for user mapping %u", entry->key.umid);
 	umform = (Form_pg_user_mapping) GETSTRUCT(tup);
 	server = GetForeignServer(umform->umserver);
 	ReleaseSysCache(tup);

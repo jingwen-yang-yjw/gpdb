@@ -44,6 +44,8 @@
 #include "utils/rel.h"
 #include "utils/sampling.h"
 #include "utils/selfuncs.h"
+#include "cdb/cdbvars.h"
+#include "cdb/cdbgang.h"
 
 /* source-code-compatibility hacks for pull_varnos() API change */
 #define make_restrictinfo(a,b,c,d,e,f,g,h,i) make_restrictinfo_new(a,b,c,d,e,f,g,h,i)
@@ -372,6 +374,9 @@ static void postgresExplainDirectModify(ForeignScanState *node,
 static bool postgresAnalyzeForeignTable(Relation relation,
 										AcquireSampleRowsFunc *func,
 										BlockNumber *totalpages);
+static bool postgresAnalyzeForeignTableForMultiServer(Relation relation,
+													  AcquireSampleRowsFunc *func,
+													  BlockNumber *totalpages);
 static List *postgresImportForeignSchema(ImportForeignSchemaStmt *stmt,
 										 Oid serverOid);
 static void postgresGetForeignJoinPaths(PlannerInfo *root,
@@ -387,7 +392,7 @@ static void postgresGetForeignUpperPaths(PlannerInfo *root,
 										 RelOptInfo *input_rel,
 										 RelOptInfo *output_rel,
 										 void *extra);
-static int greenplumCheckIsGreenplum(UserMapping *user);
+static int greenplumCheckIsGreenplum(ForeignServer *server, UserMapping *user);
 
 /*
  * Helper functions
@@ -464,6 +469,10 @@ static int	postgresAcquireSampleRowsFunc(Relation relation, int elevel,
 										  HeapTuple *rows, int targrows,
 										  double *totalrows,
 										  double *totaldeadrows);
+static int	postgresAcquireSampleRowsFuncForMultiServer(Relation relation, int elevel,
+														HeapTuple *rows, int targrows,
+														double *totalrows,
+														double *totaldeadrows);
 static void analyze_row_processor(PGresult *res, int row,
 								  PgFdwAnalyzeState *astate);
 static HeapTuple make_tuple_from_result_row(PGresult *res,
@@ -1391,6 +1400,75 @@ postgresGetForeignPlan(PlannerInfo *root,
 							outer_plan);
 }
 
+static int get_hostinfo_index(EState *estate)
+{
+	int process_no = -1;
+	ExecSlice *current_slice = &estate->es_sliceTable->slices[currentSliceId];
+
+	/* Get the process nth number in current gang */
+	int num = -1;
+	while ((num = bms_next_member(current_slice->processesMap, num)) >= 0)
+	{
+		process_no++;
+		if (qe_identifier == num)
+			break;
+	}
+
+	if(process_no < 0)
+		ereport(ERROR, (errmsg("No valid slice number")));
+
+	return process_no;
+}
+
+/*
+ * For multi servers, rewrite option host and port.
+ */
+static void rewrite_server_options(ForeignServer *server, int index)
+{
+	ListCell   *lc = NULL;
+	DefElem    *host = NULL, *port = NULL;
+	char *multi_hosts = NULL, *multi_ports = NULL;
+
+	foreach(lc, server->options)
+	{
+		DefElem    *d = (DefElem *) lfirst(lc);
+
+		if (strcmp(d->defname, "host") == 0)
+			host = d;
+		else if(strcmp(d->defname, "port") == 0)
+			port = d;
+		else if(strcmp(d->defname, "multi_hosts") == 0)
+			multi_hosts = pstrdup(defGetString(d));
+		else if(strcmp(d->defname, "multi_ports") == 0)
+			multi_ports = pstrdup(defGetString(d));
+	}
+
+	/* Using origin host and port in server option */
+	if(!multi_hosts || !multi_ports)
+		return;
+
+	List *host_list = NIL, *port_list = NIL;
+	char *one_host = NULL, *one_port = NULL;
+	while ((one_host = strsep(&multi_hosts, " ")) != NULL)
+		host_list = lappend(host_list, makeString(one_host));
+	while ((one_port = strsep(&multi_ports, " ")) != NULL)
+		port_list = lappend(port_list, makeString(one_port));
+
+	int num_host = list_length(host_list), num_port = list_length(port_list);
+	if(server->num_segments != num_host || num_host != num_port || index >= num_host)
+		ereport(ERROR, (errmsg("server option num_segments, multi_hosts and multi_ports don't match.")));
+
+	if(host)
+		host->arg = (Node *) list_nth(host_list, index);
+	else
+		server->options = lappend(server->options, makeDefElem(pstrdup("host"), (Node *)list_nth(host_list, index), -1));
+
+	if(port)
+		port->arg = (Node *) list_nth(port_list, index);
+	else
+		server->options = lappend(server->options, makeDefElem(pstrdup("port"), (Node *)list_nth(port_list, index), -1));
+}
+
 /*
  * postgresBeginForeignScan
  *		Initiate an executor scan of a foreign PostgreSQL table.
@@ -1404,6 +1482,7 @@ postgresBeginForeignScan(ForeignScanState *node, int eflags)
 	RangeTblEntry *rte;
 	Oid			userid;
 	ForeignTable *table;
+	ForeignServer *server;
 	UserMapping *user;
 	int			rtindex;
 	int			numParams;
@@ -1435,13 +1514,25 @@ postgresBeginForeignScan(ForeignScanState *node, int eflags)
 
 	/* Get info about foreign table. */
 	table = GetForeignTable(rte->relid);
+	server = GetForeignServer(table->serverid);
 	user = GetUserMapping(userid, table->serverid);
 
 	/*
 	 * Get connection to the foreign server.  Connection manager will
 	 * establish new connection if necessary.
 	 */
-	fsstate->conn = GetConnection(user, false);
+	if(table->exec_location == FTEXECLOCATION_ALL_SEGMENTS)
+	{
+		if(Gp_role == GP_ROLE_EXECUTE)
+		{
+			int index = get_hostinfo_index(estate);
+			rewrite_server_options(server, index);
+			fsstate->conn = GetConnection(server, user, false);
+		}
+		// If mpp_execute = 'all segments', QD won't built connection to remote pg server.
+	}
+	else
+		fsstate->conn = GetConnection(server, user, false);
 
 	/* Assign a unique ID for my cursor */
 	fsstate->cursor_number = GetCursorNumber(fsstate->conn);
@@ -2117,8 +2208,24 @@ postgresIsForeignRelUpdatable(Relation rel)
 	 * the hidden column gp_segment_id and the other "ModifyTable mixes
 	 * distributed and entry-only tables" issue.
 	 */
+	bool isGreenplum = false;
 	UserMapping *user = GetUserMapping(rel->rd_rel->relowner, table->serverid);
-	if (greenplumCheckIsGreenplum(user))
+	if(table->exec_location == FTEXECLOCATION_ALL_SEGMENTS)
+	{
+		int index;
+		for(index = 0; index < server->num_segments; ++index)
+		{
+			rewrite_server_options(server, index);
+			if(greenplumCheckIsGreenplum(server, user))
+				break;
+		}
+		if(index != server->num_segments)
+			isGreenplum = true;
+	}
+	else
+		isGreenplum = greenplumCheckIsGreenplum(server, user);
+
+	if (isGreenplum)
 		return (1 << CMD_INSERT);
 	else
 		return (1 << CMD_INSERT) | (1 << CMD_UPDATE) | (1 << CMD_DELETE);
@@ -2365,6 +2472,7 @@ postgresBeginDirectModify(ForeignScanState *node, int eflags)
 	RangeTblEntry *rte;
 	Oid			userid;
 	ForeignTable *table;
+	ForeignServer *server;
 	UserMapping *user;
 	int			numParams;
 
@@ -2394,13 +2502,25 @@ postgresBeginDirectModify(ForeignScanState *node, int eflags)
 	else
 		dmstate->rel = node->ss.ss_currentRelation;
 	table = GetForeignTable(RelationGetRelid(dmstate->rel));
+	server = GetForeignServer(table->serverid);
 	user = GetUserMapping(userid, table->serverid);
 
 	/*
 	 * Get connection to the foreign server.  Connection manager will
 	 * establish new connection if necessary.
 	 */
-	dmstate->conn = GetConnection(user, false);
+	if(table->exec_location == FTEXECLOCATION_ALL_SEGMENTS)
+	{
+		if(Gp_role == GP_ROLE_EXECUTE)
+		{
+			int index = get_hostinfo_index(estate);
+			rewrite_server_options(server, index);
+			dmstate->conn = GetConnection(server, user, false);
+		}
+		// If mpp_execute = 'all segments', QD won't built connection to remote pg server.
+	}
+	else
+		dmstate->conn = GetConnection(server, user, false);
 
 	/* Update the foreign-join-related fields. */
 	if (fsplan->scan.scanrelid == 0)
@@ -2700,10 +2820,36 @@ estimate_path_cost_size(PlannerInfo *root,
 								false, &retrieved_attrs, NULL);
 
 		/* Get the remote estimate */
-		conn = GetConnection(fpinfo->user, false);
-		get_remote_estimate(sql.data, conn, &rows, &width,
-							&startup_cost, &total_cost);
-		ReleaseConnection(conn);
+		ForeignServer *server = GetForeignServer(fpinfo->user->serverid);
+
+		if(foreignrel->exec_location == FTEXECLOCATION_ALL_SEGMENTS)
+		{
+			double		tmp_rows = 0;
+			int			tmp_width = 0;
+			Cost		tmp_startup_cost = 0;
+			Cost		tmp_total_cost = 0;
+
+			for(int index = 0; index < server->num_segments; ++index)
+			{
+				rewrite_server_options(server, index);
+				conn = GetConnection(server, fpinfo->user, false);
+				get_remote_estimate(sql.data, conn, &tmp_rows, &tmp_width,
+									&tmp_startup_cost, &tmp_total_cost);
+				rows += tmp_rows;
+				width += tmp_width;
+				startup_cost += tmp_startup_cost;
+				total_cost += tmp_total_cost;
+
+				ReleaseConnection(conn);
+			}
+		}
+		else
+		{
+			conn = GetConnection(server, fpinfo->user, false);
+			get_remote_estimate(sql.data, conn, &rows, &width,
+									&startup_cost, &total_cost);
+			ReleaseConnection(conn);
+		}
 
 		retrieved_rows = rows;
 
@@ -3515,6 +3661,7 @@ create_foreign_modify(EState *estate,
 	TupleDesc	tupdesc = RelationGetDescr(rel);
 	Oid			userid;
 	ForeignTable *table;
+	ForeignServer *server;
 	UserMapping *user;
 	AttrNumber	n_params;
 	Oid			typefnoid;
@@ -3533,10 +3680,23 @@ create_foreign_modify(EState *estate,
 
 	/* Get info about foreign table. */
 	table = GetForeignTable(RelationGetRelid(rel));
+	server = GetForeignServer(table->serverid);
 	user = GetUserMapping(userid, table->serverid);
 
 	/* Open connection; report that we'll create a prepared statement. */
-	fmstate->conn = GetConnection(user, true);
+	if(table->exec_location == FTEXECLOCATION_ALL_SEGMENTS)
+	{
+		if(Gp_role == GP_ROLE_EXECUTE)
+		{
+			int index = get_hostinfo_index(estate);
+			rewrite_server_options(server, index);
+			fmstate->conn = GetConnection(server, user, false);
+		}
+		// If mpp_execute = 'all segments', QD won't built connection to remote pg server.
+	}
+	else
+		fmstate->conn = GetConnection(server, user, false);
+
 	fmstate->p_name = NULL;		/* prepared statement not made yet */
 
 	/* Set up remote query information. */
@@ -4398,6 +4558,7 @@ postgresAnalyzeForeignTable(Relation relation,
 							BlockNumber *totalpages)
 {
 	ForeignTable *table;
+	ForeignServer *server;
 	UserMapping *user;
 	PGconn	   *conn;
 	StringInfoData sql;
@@ -4418,8 +4579,16 @@ postgresAnalyzeForeignTable(Relation relation,
 	 * owner, even if the ANALYZE was started by some other user.
 	 */
 	table = GetForeignTable(RelationGetRelid(relation));
+
+	if(table->exec_location == FTEXECLOCATION_ALL_SEGMENTS)
+	{
+		postgresAnalyzeForeignTableForMultiServer(relation, func, totalpages);
+		return true;
+	}
+
+	server = GetForeignServer(table->serverid);
 	user = GetUserMapping(relation->rd_rel->relowner, table->serverid);
-	conn = GetConnection(user, false);
+	conn = GetConnection(server, user, false);
 
 	/*
 	 * Construct command to get page count for relation.
@@ -4509,7 +4678,7 @@ postgresAcquireSampleRowsFunc(Relation relation, int elevel,
 	table = GetForeignTable(RelationGetRelid(relation));
 	server = GetForeignServer(table->serverid);
 	user = GetUserMapping(relation->rd_rel->relowner, table->serverid);
-	conn = GetConnection(user, false);
+	conn = GetConnection(server, user, false);
 
 	/*
 	 * Construct cursor that retrieves whole rows from remote.
@@ -4603,6 +4772,247 @@ postgresAcquireSampleRowsFunc(Relation relation, int elevel,
 	PG_END_TRY();
 
 	ReleaseConnection(conn);
+
+	/* We assume that we have no dead tuple. */
+	*totaldeadrows = 0.0;
+
+	/* We've retrieved all living tuples from foreign server. */
+	*totalrows = astate.samplerows;
+
+	/*
+	 * Emit some interesting relation info
+	 */
+	ereport(elevel,
+			(errmsg("\"%s\": table contains %.0f rows, %d rows in sample",
+					RelationGetRelationName(relation),
+					astate.samplerows, astate.numrows)));
+
+	return astate.numrows;
+}
+
+/*
+ * postgresAnalyzeForeignTableForMultiServer
+ *		Test whether analyzing this foreign table is supported
+ *
+ * Same as postgresAnalyzeForeignTable but connect to multiple servers.
+ */
+static bool
+postgresAnalyzeForeignTableForMultiServer(Relation relation,
+										  AcquireSampleRowsFunc *func,
+										  BlockNumber *totalpages)
+{
+	ForeignTable *table;
+	ForeignServer *server;
+	UserMapping *user;
+	PGconn	   *conn;
+	StringInfoData sql;
+	PGresult   *volatile res = NULL;
+
+	/* Return the row-analysis function pointer */
+	*func = postgresAcquireSampleRowsFuncForMultiServer;
+
+	/*
+	 * Now we have to get the number of pages.  It's annoying that the ANALYZE
+	 * API requires us to return that now, because it forces some duplication
+	 * of effort between this routine and postgresAcquireSampleRowsFunc.  But
+	 * it's probably not worth redefining that API at this point.
+	 */
+
+	/*
+	 * Get the connection to use.  We do the remote access as the table's
+	 * owner, even if the ANALYZE was started by some other user.
+	 */
+	table = GetForeignTable(RelationGetRelid(relation));
+	Assert(table->exec_location == FTEXECLOCATION_ALL_SEGMENTS);
+
+	server = GetForeignServer(table->serverid);
+	user = GetUserMapping(relation->rd_rel->relowner, table->serverid);
+
+	/*
+	 * Construct command to get page count for relation.
+	 */
+	initStringInfo(&sql);
+	deparseAnalyzeSizeSql(&sql, relation);
+
+	*totalpages = 0;
+	for(int index = 0; index < server->num_segments; ++index)
+	{
+		rewrite_server_options(server, index);
+		conn = GetConnection(server, user, false);
+
+		/* In what follows, do not risk leaking any PGresults. */
+		PG_TRY();
+		{
+			res = pgfdw_exec_query(conn, sql.data);
+			if (PQresultStatus(res) != PGRES_TUPLES_OK)
+				pgfdw_report_error(ERROR, res, conn, false, sql.data);
+
+			if (PQntuples(res) != 1 || PQnfields(res) != 1)
+				elog(ERROR, "unexpected result from deparseAnalyzeSizeSql query");
+			*totalpages += strtoul(PQgetvalue(res, 0, 0), NULL, 10);
+
+			PQclear(res);
+			res = NULL;
+		}
+		PG_CATCH();
+		{
+			if (res)
+				PQclear(res);
+			PG_RE_THROW();
+		}
+		PG_END_TRY();
+
+		ReleaseConnection(conn);
+	}
+
+	return true;
+}
+
+/*
+ * Acquire a random sample of rows from foreign table managed by postgres_fdw.
+ *
+ * Same as postgresAcquireSampleRowsFunc but connect to multiple server.
+ */
+static int
+postgresAcquireSampleRowsFuncForMultiServer(Relation relation, int elevel,
+											HeapTuple *rows, int targrows,
+											double *totalrows,
+											double *totaldeadrows)
+{
+	PgFdwAnalyzeState astate;
+	ForeignTable *table;
+	ForeignServer *server;
+	UserMapping *user;
+	PGconn	   *conn;
+	unsigned int cursor_number;
+	StringInfoData sql;
+	PGresult   *volatile res = NULL;
+
+	/* Initialize workspace state */
+	astate.rel = relation;
+	astate.attinmeta = TupleDescGetAttInMetadata(RelationGetDescr(relation));
+
+	astate.rows = rows;
+	astate.targrows = targrows;
+	astate.numrows = 0;
+	astate.samplerows = 0;
+	astate.rowstoskip = -1;		/* -1 means not set yet */
+	reservoir_init_selection_state(&astate.rstate, targrows);
+
+	/* Remember ANALYZE context, and create a per-tuple temp context */
+	astate.anl_cxt = CurrentMemoryContext;
+	astate.temp_cxt = AllocSetContextCreate(CurrentMemoryContext,
+											"postgres_fdw temporary data",
+											ALLOCSET_SMALL_SIZES);
+
+	/*
+	 * Get the connection to use.  We do the remote access as the table's
+	 * owner, even if the ANALYZE was started by some other user.
+	 */
+	table = GetForeignTable(RelationGetRelid(relation));
+	Assert(table->exec_location == FTEXECLOCATION_ALL_SEGMENTS);
+
+	server = GetForeignServer(table->serverid);
+	user = GetUserMapping(relation->rd_rel->relowner, table->serverid);
+
+	for(int index = 0; index < server->num_segments; ++index)
+	{
+		rewrite_server_options(server, index);
+		conn = GetConnection(server, user, false);
+
+		/*
+		 * Construct cursor that retrieves whole rows from remote.
+		 */
+		cursor_number = GetCursorNumber(conn);
+		initStringInfo(&sql);
+		appendStringInfo(&sql, "DECLARE c%u CURSOR FOR ", cursor_number);
+		deparseAnalyzeSql(&sql, relation, &astate.retrieved_attrs);
+
+		/* In what follows, do not risk leaking any PGresults. */
+		PG_TRY();
+		{
+			res = pgfdw_exec_query(conn, sql.data);
+			if (PQresultStatus(res) != PGRES_COMMAND_OK)
+				pgfdw_report_error(ERROR, res, conn, false, sql.data);
+			PQclear(res);
+			res = NULL;
+
+			/* Retrieve and process rows a batch at a time. */
+			for (;;)
+			{
+				char		fetch_sql[64];
+				int			fetch_size;
+				int			numrows;
+				int			i;
+				ListCell   *lc;
+
+				/* Allow users to cancel long query */
+				CHECK_FOR_INTERRUPTS();
+
+				/*
+				 * XXX possible future improvement: if rowstoskip is large, we
+				 * could issue a MOVE rather than physically fetching the rows,
+				 * then just adjust rowstoskip and samplerows appropriately.
+				 */
+
+				/* The fetch size is arbitrary, but shouldn't be enormous. */
+				fetch_size = 100;
+				foreach(lc, server->options)
+				{
+					DefElem    *def = (DefElem *) lfirst(lc);
+
+					if (strcmp(def->defname, "fetch_size") == 0)
+					{
+						fetch_size = strtol(defGetString(def), NULL, 10);
+						break;
+					}
+				}
+				foreach(lc, table->options)
+				{
+					DefElem    *def = (DefElem *) lfirst(lc);
+
+					if (strcmp(def->defname, "fetch_size") == 0)
+					{
+						fetch_size = strtol(defGetString(def), NULL, 10);
+						break;
+					}
+				}
+
+				/* Fetch some rows */
+				snprintf(fetch_sql, sizeof(fetch_sql), "FETCH %d FROM c%u",
+						 fetch_size, cursor_number);
+
+				res = pgfdw_exec_query(conn, fetch_sql);
+				/* On error, report the original query, not the FETCH. */
+				if (PQresultStatus(res) != PGRES_TUPLES_OK)
+					pgfdw_report_error(ERROR, res, conn, false, sql.data);
+
+				/* Process whatever we got. */
+				numrows = PQntuples(res);
+				for (i = 0; i < numrows; i++)
+					analyze_row_processor(res, i, &astate);
+
+				PQclear(res);
+				res = NULL;
+
+				/* Must be EOF if we didn't get all the rows requested. */
+				if (numrows < fetch_size)
+					break;
+			}
+
+			/* Close the cursor, just to be tidy. */
+			close_cursor(conn, cursor_number);
+		}
+		PG_CATCH();
+		{
+			if (res)
+				PQclear(res);
+			PG_RE_THROW();
+		}
+		PG_END_TRY();
+
+		ReleaseConnection(conn);
+	}
 
 	/* We assume that we have no dead tuple. */
 	*totaldeadrows = 0.0;
@@ -4735,7 +5145,7 @@ postgresImportForeignSchema(ImportForeignSchemaStmt *stmt, Oid serverOid)
 	 */
 	server = GetForeignServer(serverOid);
 	mapping = GetUserMapping(GetUserId(), server->serverid);
-	conn = GetConnection(mapping, false);
+	conn = GetConnection(server, mapping, false);
 
 	/* Don't attempt to import collation if remote server hasn't got it */
 	if (PQserverVersion(conn) < 90100)
@@ -6679,15 +7089,14 @@ find_em_for_rel_target(PlannerInfo *root, EquivalenceClass *ec,
 }
 
 static int
-greenplumCheckIsGreenplum(UserMapping *user)
+greenplumCheckIsGreenplum(ForeignServer *server, UserMapping *user)
 {
 	PGconn     *conn;
 	PGresult   *res;
 	int                     ret;
 
 	char *query =  "SELECT version()";
-
-	conn = GetConnection(user, false);
+	conn = GetConnection(server, user, false);
 
 	res = pgfdw_exec_query(conn, query);
 	if (PQresultStatus(res) != PGRES_TUPLES_OK)
