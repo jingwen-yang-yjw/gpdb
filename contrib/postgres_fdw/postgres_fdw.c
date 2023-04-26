@@ -6319,6 +6319,41 @@ add_foreign_final_paths(PlannerInfo *root, RelOptInfo *input_rel,
 	add_path(final_rel, (Path *) final_path);
 }
 
+static void get_retrieved_partial_aggfnoids(ForeignScanState *fsstate,
+											List *retrieved_attrs,
+											List **retrieved_aggfnoids)
+{
+	ListCell *lc = NULL;
+	if (!fsstate)
+	{
+		foreach(lc, retrieved_attrs)
+			*retrieved_aggfnoids = lappend_oid(*retrieved_aggfnoids, InvalidOid);
+	}
+	else
+	{
+		/* ForeignScan case */
+		ForeignScan *fsplan = castNode(ForeignScan, fsstate->ss.ps.plan);
+		if(!fsplan->fdw_scan_tlist)
+		{
+			foreach(lc, retrieved_attrs)
+				*retrieved_aggfnoids = lappend_oid(*retrieved_aggfnoids, InvalidOid);
+		}
+		else
+		{
+			foreach(lc, fsplan->fdw_scan_tlist)
+			{
+				TargetEntry *tle = lfirst_node(TargetEntry, lc);
+
+				if (tle->expr != NULL && nodeTag(tle->expr) == T_Aggref &&
+					((Aggref *) tle->expr)->aggsplit == AGGSPLIT_INITIAL_SERIAL)
+					*retrieved_aggfnoids = lappend_oid(*retrieved_aggfnoids, ((Aggref *) tle->expr)->aggfnoid);
+				else
+					*retrieved_aggfnoids = lappend_oid(*retrieved_aggfnoids, InvalidOid);
+			}
+		}
+	}
+}
+
 /*
  * Create a tuple from the specified row of the PGresult.
  *
@@ -6351,6 +6386,7 @@ make_tuple_from_result_row(PGresult *res,
 	MemoryContext oldcontext;
 	ListCell   *lc;
 	int			j;
+	List		*retrieved_aggfnoids = NIL;
 
 	Assert(row < PQntuples(res));
 
@@ -6388,6 +6424,9 @@ make_tuple_from_result_row(PGresult *res,
 	errcallback.arg = (void *) &errpos;
 	errcallback.previous = error_context_stack;
 	error_context_stack = &errcallback;
+
+	get_retrieved_partial_aggfnoids(fsstate, retrieved_attrs, &retrieved_aggfnoids);
+	Assert(list_length(retrieved_attrs) == list_length(retrieved_aggfnoids));
 
 	/*
 	 * i indexes columns in the relation, j indexes columns in the PGresult.
