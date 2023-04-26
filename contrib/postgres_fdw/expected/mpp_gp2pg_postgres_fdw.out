@@ -1,0 +1,115 @@
+-- This file is used to test mpp pusdown.
+-- ===================================================================
+-- create FDW objects
+-- ===================================================================
+SET timezone = 'PST8PDT';
+set optimizer_trace_fallback = on;
+CREATE EXTENSION postgres_fdw;
+CREATE SERVER pgserver FOREIGN DATA WRAPPER postgres_fdw
+  OPTIONS (dbname 'contrib_regression', host 'localhost', port '5432', num_segments '4');
+CREATE USER MAPPING FOR CURRENT_USER SERVER pgserver;
+-- ===================================================================
+-- create objects used through FDW pgserver server
+-- ===================================================================
+\! env PGOPTIONS='' psql -p ${PG_PORT} contrib_regression -f sql/postgres_sql/mpp_gp2pg_postgres_init.sql
+SET
+CREATE SCHEMA
+CREATE TABLE
+ALTER TABLE
+INSERT 0 1000
+ANALYZE
+-- ===================================================================
+-- create foreign tables
+-- ===================================================================
+CREATE FOREIGN TABLE mpp_ft1 (
+	c1 int,
+	c2 int
+) SERVER pgserver OPTIONS (schema_name 'MPP_S 1', table_name 'T 1', mpp_execute 'all segments');
+CREATE FOREIGN TABLE ft1 (
+	c1 int,
+	c2 int
+) SERVER pgserver OPTIONS (schema_name 'MPP_S 1', table_name 'T 1');
+-- ===================================================================
+-- test simple query
+-- ===================================================================
+EXPLAIN VERBOSE
+SELECT COUNT(*) FROM mpp_ft1;
+                                      QUERY PLAN                                       
+---------------------------------------------------------------------------------------
+ Finalize Aggregate  (cost=1276.34..1276.35 rows=1 width=8)
+   Output: count(*)
+   ->  Gather Motion 4:1  (slice1; segments: 4)  (cost=315.25..1276.33 rows=4 width=8)
+         Output: (PARTIAL count(*))
+         ->  Foreign Scan  (cost=315.25..1276.28 rows=1 width=8)
+               Output: (PARTIAL count(*))
+               Relations: Aggregate on (public.mpp_ft1)
+               Remote SQL: SELECT count(*) FROM "MPP_S 1"."T 1"
+ Optimizer: Postgres query optimizer
+(9 rows)
+
+SELECT COUNT(*) FROM mpp_ft1;
+ count 
+-------
+  4000
+(1 row)
+
+SELECT COUNT(*) FROM ft1;
+ count 
+-------
+  1000
+(1 row)
+
+EXPLAIN VERBOSE
+SELECT SUM(c1) FROM mpp_ft1;
+                                      QUERY PLAN                                       
+---------------------------------------------------------------------------------------
+ Finalize Aggregate  (cost=1276.34..1276.35 rows=1 width=8)
+   Output: sum(c1)
+   ->  Gather Motion 4:1  (slice1; segments: 4)  (cost=315.25..1276.33 rows=4 width=8)
+         Output: (PARTIAL sum(c1))
+         ->  Foreign Scan  (cost=315.25..1276.28 rows=1 width=8)
+               Output: (PARTIAL sum(c1))
+               Relations: Aggregate on (public.mpp_ft1)
+               Remote SQL: SELECT sum(c1) FROM "MPP_S 1"."T 1"
+ Optimizer: Postgres query optimizer
+(9 rows)
+
+SELECT SUM(c1) FROM mpp_ft1;
+   sum   
+---------
+ 2002000
+(1 row)
+
+SELECT SUM(c1) FROM ft1;
+  sum   
+--------
+ 500500
+(1 row)
+
+EXPLAIN VERBOSE
+SELECT avg(c1) FROM mpp_ft1;
+                                       QUERY PLAN                                       
+----------------------------------------------------------------------------------------
+ Finalize Aggregate  (cost=1276.35..1276.36 rows=1 width=32)
+   Output: avg(c1)
+   ->  Gather Motion 4:1  (slice1; segments: 4)  (cost=315.25..1276.33 rows=4 width=32)
+         Output: (PARTIAL avg(c1))
+         ->  Foreign Scan  (cost=315.25..1276.28 rows=1 width=32)
+               Output: (PARTIAL avg(c1))
+               Relations: Aggregate on (public.mpp_ft1)
+               Remote SQL: SELECT array[count(c1), sum(c1)] FROM "MPP_S 1"."T 1"
+ Optimizer: Postgres query optimizer
+(9 rows)
+
+SELECT avg(c1) FROM mpp_ft1;
+         avg          
+----------------------
+ 500.5000000000000000
+(1 row)
+
+SELECT avg(c1) FROM ft1;
+         avg          
+----------------------
+ 500.5000000000000000
+(1 row)
+
