@@ -6384,7 +6384,8 @@ make_tuple_from_result_row(PGresult *res,
 	ConversionLocation errpos;
 	ErrorContextCallback errcallback;
 	MemoryContext oldcontext;
-	ListCell   *lc;
+	ListCell   *lc1;
+	ListCell   *lc2;
 	int			j;
 	List		*retrieved_aggfnoids = NIL;
 
@@ -6432,9 +6433,10 @@ make_tuple_from_result_row(PGresult *res,
 	 * i indexes columns in the relation, j indexes columns in the PGresult.
 	 */
 	j = 0;
-	foreach(lc, retrieved_attrs)
+	forboth(lc1, retrieved_attrs, lc2, retrieved_aggfnoids)
 	{
-		int			i = lfirst_int(lc);
+		int			i = lfirst_int(lc1);
+		Oid			aggfnoid = lfirst_oid(lc2);
 		char	   *valstr;
 
 		/* fetch next column's textual value */
@@ -6454,11 +6456,26 @@ make_tuple_from_result_row(PGresult *res,
 			/* ordinary column */
 			Assert(i <= tupdesc->natts);
 			nulls[i - 1] = (valstr == NULL);
-			/* Apply the input function even to nulls, to support domains */
-			values[i - 1] = InputFunctionCall(&attinmeta->attinfuncs[i - 1],
-											  valstr,
-											  attinmeta->attioparams[i - 1],
-											  attinmeta->atttypmods[i - 1]);
+			PGFunction	fn_addr = GetTranscodingFnFromOid(aggfnoid);
+			if (!fn_addr) {
+				/* Apply the input function even to nulls, to support domains */
+				values[i - 1] = InputFunctionCall(&attinmeta->attinfuncs[i - 1],
+											  	valstr,
+											  	attinmeta->attioparams[i - 1],
+											  	attinmeta->atttypmods[i - 1]);
+			} 
+			else 
+			{
+				/* Transcoding to internal result for partial AGG */
+				FmgrInfo flinfo;
+				memset(&flinfo, 0, sizeof(FmgrInfo));
+				flinfo.fn_addr = fn_addr;
+				flinfo.fn_nargs = 3;
+				flinfo.fn_strict = true;
+				values[i - 1] = InputFunctionCall(&flinfo, valstr, 
+												attinmeta->attioparams[i - 1], 
+												attinmeta->atttypmods[i - 1]);
+			}
 		}
 		else if (i == SelfItemPointerAttributeNumber)
 		{
