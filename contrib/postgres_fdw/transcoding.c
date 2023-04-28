@@ -40,7 +40,7 @@
 #include "utils/fmgrprotos.h"
 #include "nodes/execnodes.h"
 
-
+/* Start of depandancies of internal struct from numeric.c */
 typedef struct NumericSumAccum
 {
 	int			ndigits;
@@ -62,14 +62,12 @@ typedef struct NumericAggState
 	int64		maxScaleCount;	/* number of values seen with maximum scale */
 	int64		NaNcount;		/* count of NaN values (not included in N!) */
 } NumericAggState;
-
 #define init_sumaccum(v) \
 	do { \
 		(v)->ndigits = (v)->weight = (v)->dscale = (v)->have_carry_space = 0; \
 		(v)->pos_digits = NULL; 	\
 		(v)->neg_digits = NULL; 	\
 	} while (0)
-
 #define NBASE		10000
 #define HALF_NBASE	5000
 #define DEC_DIGITS	4			/* decimal digits per NBASE digit */
@@ -81,14 +79,12 @@ struct NumericShort
 	uint16		n_header;		/* Sign + display scale + weight */
 	NumericDigit n_data[FLEXIBLE_ARRAY_MEMBER]; /* Digits */
 };
-
 struct NumericLong
 {
 	uint16		n_sign_dscale;	/* Sign + display scale */
 	int16		n_weight;		/* Weight of 1st digit	*/
 	NumericDigit n_data[FLEXIBLE_ARRAY_MEMBER]; /* Digits */
 };
-
 union NumericChoice
 {
 	uint16		n_header;		/* Header word */
@@ -101,7 +97,6 @@ struct NumericData
 	union NumericChoice choice; /* choice of format */
 };
 typedef struct NumericData *Numeric;
-
 #define	NUMERIC_LOCAL_NDIG	36		/* number of 'digits' in local digits[] */
 #define NUMERIC_LOCAL_NMAX	(NUMERIC_LOCAL_NDIG - 2)
 #define	NUMERIC_LOCAL_DTXT	128		/* number of char in local text */
@@ -116,27 +111,22 @@ typedef struct NumericVar
 	NumericDigit *digits;		/* base-NBASE digits */
 	NumericDigit ndb[NUMERIC_LOCAL_NDIG];	/* local space for digits[] */
 } NumericVar;
-
 /*
  * Interpretation of high bits.
  */
-
 #define NUMERIC_SIGN_MASK	0xC000
 #define NUMERIC_POS			0x0000
 #define NUMERIC_NEG			0x4000
 #define NUMERIC_SHORT		0x8000
 #define NUMERIC_NAN			0xC000
-
 #define NUMERIC_FLAGBITS(n) ((n)->choice.n_header & NUMERIC_SIGN_MASK)
 #define NUMERIC_IS_NAN(n)		(NUMERIC_FLAGBITS(n) == NUMERIC_NAN)
 #define NUMERIC_IS_SHORT(n)		(NUMERIC_FLAGBITS(n) == NUMERIC_SHORT)
-
 #define NUMERIC_HDRSZ	(VARHDRSZ + sizeof(uint16) + sizeof(int16))
 #define NUMERIC_HDRSZ_SHORT (VARHDRSZ + sizeof(uint16))
 /*
  * Short format definitions.
  */
-
 #define NUMERIC_SHORT_SIGN_MASK			0x2000
 #define NUMERIC_SHORT_DSCALE_MASK		0x1F80
 #define NUMERIC_SHORT_DSCALE_SHIFT		7
@@ -146,7 +136,6 @@ typedef struct NumericVar
 #define NUMERIC_SHORT_WEIGHT_MASK		0x003F
 #define NUMERIC_SHORT_WEIGHT_MAX		NUMERIC_SHORT_WEIGHT_MASK
 #define NUMERIC_SHORT_WEIGHT_MIN		(-(NUMERIC_SHORT_WEIGHT_MASK+1))
-
 /*
  * If the flag bits are NUMERIC_SHORT or NUMERIC_NAN, we want the short header;
  * otherwise, we want the long one.  Instead of testing against each value, we
@@ -177,7 +166,6 @@ typedef struct NumericVar
 		~NUMERIC_SHORT_WEIGHT_MASK : 0) \
 	 | ((n)->choice.n_short.n_header & NUMERIC_SHORT_WEIGHT_MASK)) \
 	: ((n)->choice.n_long.n_weight))
-
 #define	init_alloc_var(v, n) \
 	do 	{	\
 		(v)->buf = (v)->ndb;	\
@@ -187,22 +175,18 @@ typedef struct NumericVar
 		(v)->buf[0] = 0;	\
 		(v)->digits = (v)->buf + 1;	\
 	} while (0)
-
 #define quick_init_var(v) \
 	do { \
 		(v)->buf = (v)->ndb;	\
 		(v)->digits = NULL; 	\
 	} while (0)
-
 #define init_var(v) \
 	do { \
 		quick_init_var((v));	\
 		(v)->ndigits = (v)->weight = (v)->sign = (v)->dscale = 0; \
 	} while (0)
-
 #define digitbuf_alloc(ndigits)  \
 	((NumericDigit *) palloc((ndigits) * sizeof(NumericDigit)))
-
 #define digitbuf_free(v)	\
 	do { \
 		if ((v)->buf != (v)->ndb)	\
@@ -211,7 +195,6 @@ typedef struct NumericVar
 			(v)->buf = (v)->ndb;	\
 		}	\
 	} while (0)
-
 #define NUMERIC_DIGITS(num) (NUMERIC_HEADER_IS_SHORT(num) ? \
 	(num)->choice.n_short.n_data : (num)->choice.n_long.n_data)
 #define NUMERIC_NDIGITS(num) \
@@ -220,60 +203,13 @@ typedef struct NumericVar
 	((scale) <= NUMERIC_SHORT_DSCALE_MAX && \
 	(weight) <= NUMERIC_SHORT_WEIGHT_MAX && \
 	(weight) >= NUMERIC_SHORT_WEIGHT_MIN)
-
 /* ----------
  * Some preinitialized constants
  * ----------
  */
-static const NumericDigit const_zero_data[1] = {0};
-static const NumericVar const_zero =
-{0, 0, NUMERIC_POS, 0, NULL, (NumericDigit *) const_zero_data};
-
-static const NumericDigit const_one_data[1] = {1};
-static const NumericVar const_one =
-{1, 0, NUMERIC_POS, 0, NULL, (NumericDigit *) const_one_data};
-
-static const NumericDigit const_two_data[1] = {2};
-static const NumericVar const_two =
-{1, 0, NUMERIC_POS, 0, NULL, (NumericDigit *) const_two_data};
-
-#if DEC_DIGITS == 4
-static const NumericDigit const_zero_point_five_data[1] = {5000};
-#elif DEC_DIGITS == 2
-static const NumericDigit const_zero_point_five_data[1] = {50};
-#elif DEC_DIGITS == 1
-static const NumericDigit const_zero_point_five_data[1] = {5};
-#endif
-static const NumericVar const_zero_point_five =
-{1, -1, NUMERIC_POS, 1, NULL, (NumericDigit *) const_zero_point_five_data};
-
-#if DEC_DIGITS == 4
-static const NumericDigit const_zero_point_nine_data[1] = {9000};
-#elif DEC_DIGITS == 2
-static const NumericDigit const_zero_point_nine_data[1] = {90};
-#elif DEC_DIGITS == 1
-static const NumericDigit const_zero_point_nine_data[1] = {9};
-#endif
-static const NumericVar const_zero_point_nine =
-{1, -1, NUMERIC_POS, 1, NULL, (NumericDigit *) const_zero_point_nine_data};
-
-#if DEC_DIGITS == 4
-static const NumericDigit const_one_point_one_data[2] = {1, 1000};
-#elif DEC_DIGITS == 2
-static const NumericDigit const_one_point_one_data[2] = {1, 10};
-#elif DEC_DIGITS == 1
-static const NumericDigit const_one_point_one_data[2] = {1, 1};
-#endif
-static const NumericVar const_one_point_one =
-{2, 0, NUMERIC_POS, 1, NULL, (NumericDigit *) const_one_point_one_data};
-
-static const NumericVar const_nan =
-{0, 0, NUMERIC_NAN, 0, NULL, NULL};
-
 #if DEC_DIGITS == 4
 static const int round_powers[4] = {0, 1000, 100, 10};
 #endif
-
 static void
 init_var_from_num(Numeric num, NumericVar *dest)
 {
@@ -899,7 +835,6 @@ do_numeric_accum(NumericAggState *state, Numeric newval)
 
 	MemoryContextSwitchTo(old_context);
 }
-
 static NumericAggState *
 makeNumericAggStateCurrentContext(bool calcSumX2)
 {
@@ -913,9 +848,7 @@ makeNumericAggStateCurrentContext(bool calcSumX2)
 
 	return state;
 }
-
 #ifdef HAVE_INT128
-
 typedef struct Int128AggState
 {
 	bool		calcSumX2;		/* if true, calculate sumX2 */
@@ -938,12 +871,12 @@ typedef Int128AggState PolyNumAggState;
 typedef NumericAggState PolyNumAggState;
 #define makePolyNumAggStateCurrentContext makeNumericAggStateCurrentContext
 #endif
-
 typedef struct Int8TransTypeData
 {
 	int64		count;
 	int64		sum;
 } Int8TransTypeData;
+/* End of depandancies of internal struct from numeric.c */
 
 /* Make fake AggState to call agg functions */
 static AggState *GetFakeAggState()
@@ -965,13 +898,13 @@ static Datum CallAggfunction1(FmgrInfo *flinfo, Datum arg1, fmNodePtr *context)
 }
 
 /* 
- * Handle trancoding for agg function 2100
+ * Handle trancoding for agg function 2100 and 2107
  * The input str is formatted like {$count, $sum} 
  * 1. Transcode the input str into ArrayType whose data type is int64
  * 2. Construct internal type PolyNumAggState
  * 3. Serialize PolyNumAggState into bytea
  */
-static Datum transfn_2100(PG_FUNCTION_ARGS)
+static Datum transfn_to_polynumaggstate(PG_FUNCTION_ARGS)
 {
 	ArrayType	*internal_array = NULL;
 	char		*str = PG_GETARG_CSTRING(0);
@@ -1006,11 +939,18 @@ static Datum transfn_2100(PG_FUNCTION_ARGS)
 	return CallAggfunction1(&flinfo, (Datum)internal_polynum, (fmNodePtr *)aggstate);
 }
 
-static Datum transfn_2103(PG_FUNCTION_ARGS)
+/* 
+ * Handle trancoding for agg function 2103 and 2114
+ * The input str is formatted like {$count, $sum} 
+ * 1. Transcode the input str into ArrayType whose data type is numeric
+ * 2. Construct internal type NumericAggState
+ * 3. Serialize NumericAggState into bytea
+ */
+static Datum transfn_to_numericaggstate(PG_FUNCTION_ARGS)
 {
 	ArrayType	*internal_array = NULL;
 	char		*str = PG_GETARG_CSTRING(0);
-	Oid			element_type = NUMERICOID; /* Numeric */
+	Oid			element_type = NUMERICOID;
 	int32		typmod = PG_GETARG_INT32(2);
 	int64		countd;
 	Datum		sumd;
@@ -1054,7 +994,7 @@ PGFunction GetTranscodingFnFromOid(Oid aggfnoid) {
 			 * - 2100 pg_catalog.avg int8|bigint
 			 * - 2107 pg_catalog.sum int8|bigint
 			 */
-			refnaddr = transfn_2100;
+			refnaddr = transfn_to_polynumaggstate;
 			break;
 		case 2103:
 		case 2114:
@@ -1062,7 +1002,7 @@ PGFunction GetTranscodingFnFromOid(Oid aggfnoid) {
 			 * - 2103 pg_catalog.avg numeric
 			 * - 2114 pg_catalog.sum numeric
 			 */
-			refnaddr = transfn_2103;
+			refnaddr = transfn_to_numericaggstate;
 			break;
 		default:
 			break;
