@@ -3138,11 +3138,16 @@ deparsePartialAggFunctionParamFilter(Aggref *node, deparse_expr_cxt *context,
 			/* Fall through */
 		case 2102:
 			/* int2 AVG function */
-			appendStringInfo(buf, "array[count(%s)%s, sum(%s)%s]", agg_param->data, agg_filter->data,
-				agg_param->data, agg_filter->data);
-			break;
+			/* Fall through */
+		case 2107:
+			/* int8 SUM */
+			/* Fall through */
 		case 2103:
 			/* numeric AVG function */
+			/* Fall through */
+		case 2114:
+			/* numeric SUM */
+			/* According to aggcombinefn, those aggregate functions need to fetch same columns from remote server. */
 			appendStringInfo(buf, "array[count(%s)%s, sum(%s)%s]", agg_param->data, agg_filter->data,
 				agg_param->data, agg_filter->data);
 			break;
