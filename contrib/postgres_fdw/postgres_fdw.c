@@ -5656,6 +5656,18 @@ foreign_grouping_ok(PlannerInfo *root, RelOptInfo *grouped_rel,
 			 * Non-grouping expression we need to compute.  Can we ship it
 			 * as-is to the foreign server?
 			 */
+			if (IsA(expr, Var))
+			{
+				/*
+				 * If non-grouping expressions are plain vars outside an aggregate,
+				 * it's unsafe to make foreign grouping.
+				 * Because corresponding Remote SQL might be invalid --
+				 * such columns neither appear in the GROUP BY clause nor be used
+				 * in an aggregate function.
+				 */
+				return false;
+			}
+
 			if (is_foreign_expr(root, grouped_rel, expr) &&
 				!is_foreign_param(root, grouped_rel, expr))
 			{
