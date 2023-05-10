@@ -164,3 +164,13 @@ SELECT count(c1), sum(c3), avg(c4), min(c5), max(c6), count(c1) * (random() <= 1
 SELECT count(c1), sum(c3), avg(c4), min(c5), max(c6), count(c1) * (random() <= 1)::int as count2 FROM mpp_ft1 GROUP BY c2 ORDER BY c2;
 
 ALTER FOREIGN TABLE mpp_ft1 OPTIONS(set use_remote_estimate 'false');
+
+-- limit is not pushed down when mpp_execute is set to 'all segments'
+-- limit with agg functions
+EXPLAIN (VERBOSE, COSTS OFF)
+SELECT count(c1), max(c6) FROM mpp_ft1 GROUP BY c2 order by c2 limit 3;
+SELECT count(c1), max(c6) FROM mpp_ft1 GROUP BY c2 order by c2 limit 3;
+-- limit with normal scan without agg functions
+EXPLAIN (VERBOSE, COSTS OFF)
+SELECT c1, c2 FROM mpp_ft1 order by c1 limit 3;
+SELECT c1, c2 FROM mpp_ft1 order by c1 limit 3;

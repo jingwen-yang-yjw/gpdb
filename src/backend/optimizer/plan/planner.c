@@ -3002,7 +3002,8 @@ grouping_planner(PlannerInfo *root, bool inheritance_update,
 	 * If there is an FDW that's responsible for all baserels of the query,
 	 * let it consider adding ForeignPaths.
 	 */
-	if (final_rel->fdwroutine &&
+	if (final_rel->exec_location != FTEXECLOCATION_ALL_SEGMENTS &&
+		final_rel->fdwroutine &&
 		final_rel->fdwroutine->GetForeignUpperPaths)
 		final_rel->fdwroutine->GetForeignUpperPaths(root, UPPERREL_FINAL,
 													current_rel, final_rel,
