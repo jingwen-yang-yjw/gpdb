@@ -174,3 +174,7 @@ SELECT count(c1), max(c6) FROM mpp_ft1 GROUP BY c2 order by c2 limit 3;
 EXPLAIN (VERBOSE, COSTS OFF)
 SELECT c1, c2 FROM mpp_ft1 order by c1 limit 3;
 SELECT c1, c2 FROM mpp_ft1 order by c1 limit 3;
+-- join is not safe to pushed down when mpp_execute is set to 'all segments'
+EXPLAIN (VERBOSE, COSTS OFF)
+SELECT count(*), sum(t1.c1), avg(t2.c2) FROM mpp_ft1 t1 inner join mpp_ft1 t2 on (t1.c1 = t2.c1) where t1.c1 = 2;
+SELECT count(*), sum(t1.c1), avg(t2.c2) FROM mpp_ft1 t1 inner join mpp_ft1 t2 on (t1.c1 = t2.c1) where t1.c1 = 2;
