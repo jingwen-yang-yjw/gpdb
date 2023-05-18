@@ -230,7 +230,7 @@ classifyConditions(PlannerInfo *root,
 	}
 }
 
-static bool supported_by_hand(Oid target) {
+static bool supported_by_fdw(Oid target) {
 	static Oid supported_partial_agg[] = {
 			2100, /* pg_catalog.avg int8|bigint */
 			2101, /* pg_catalog.avg int4|int */
@@ -339,7 +339,7 @@ partial_agg_ok(Aggref* agg, PgFdwRelationInfo *fpinfo)
 	{
 		partial_agg_ok = true;
 	}
-	else if (supported_by_hand(aggform->aggfnoid))
+	else if (supported_by_fdw(aggform->aggfnoid))
 	{
 		partial_agg_ok = true;
 	}
@@ -3139,14 +3139,8 @@ deparsePartialAggFunctionParamFilter(Aggref *node, deparse_expr_cxt *context,
 		case 2102:
 			/* int2 AVG function */
 			/* Fall through */
-		case 2107:
-			/* int8 SUM */
-			/* Fall through */
 		case 2103:
 			/* numeric AVG function */
-			/* Fall through */
-		case 2114:
-			/* numeric SUM */
 			/* According to aggcombinefn, those aggregate functions need to fetch same columns from remote server. */
 			appendStringInfo(buf, "array[count(%s)%s, sum(%s)%s]", agg_param->data, agg_filter->data,
 				agg_param->data, agg_filter->data);
