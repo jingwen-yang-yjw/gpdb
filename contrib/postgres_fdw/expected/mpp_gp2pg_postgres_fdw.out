@@ -75,7 +75,7 @@ SELECT sum(c1), sum(c3), sum(c4), sum(c5), sum(c6), sum(c7) FROM mpp_ft1;
          ->  Foreign Scan
                Output: (PARTIAL sum(c1)), (PARTIAL sum(c3)), (PARTIAL sum(c4)), (PARTIAL sum(c5)), (PARTIAL sum(c6)), (PARTIAL sum(c7))
                Relations: Aggregate on (public.mpp_ft1)
-               Remote SQL: SELECT sum(c1), sum(c3), array[count(c4), sum(c4)], sum(c5), sum(c6), array[count(c7), sum(c7)] FROM "MPP_S 1"."T 1"
+               Remote SQL: SELECT sum(c1), sum(c3), sum(c4), sum(c5), sum(c6), sum(c7) FROM "MPP_S 1"."T 1"
  Optimizer: Postgres query optimizer
  Settings: gp_enable_minmax_optimization = 'off'
 (10 rows)
