@@ -60,13 +60,13 @@ static Datum CallAggfunction1(FmgrInfo *flinfo, Datum arg1, fmNodePtr *context)
 }
 
 /* 
- * Handle trancoding for agg function 2100 and 2107
+ * Handle trancoding for aggregate function -- avg(bigint), aggfnoid = 2100
  * The input str is formatted like {$count, $sum} 
  * 1. Transcode the input str into ArrayType whose data type is int64
  * 2. Construct internal type PolyNumAggState
  * 3. Serialize PolyNumAggState into bytea
  */
-static Datum transfn_to_polynumaggstate(PG_FUNCTION_ARGS)
+static Datum transfn_for_avg_bigint(PG_FUNCTION_ARGS)
 {
 	ArrayType	*internal_array = NULL;
 	char		*str = PG_GETARG_CSTRING(0);
@@ -102,13 +102,13 @@ static Datum transfn_to_polynumaggstate(PG_FUNCTION_ARGS)
 }
 
 /* 
- * Handle trancoding for agg function 2103 and 2114
+ * Handle trancoding for aggregate function -- avg(numeric), aggfnoid = 2103
  * The input str is formatted like {$count, $sum} 
  * 1. Transcode the input str into ArrayType whose data type is numeric
  * 2. Construct internal type NumericAggState
  * 3. Serialize NumericAggState into bytea
  */
-static Datum transfn_to_numericaggstate(PG_FUNCTION_ARGS)
+static Datum transfn_for_avg_numeric(PG_FUNCTION_ARGS)
 {
 	ArrayType	*internal_array = NULL;
 	char		*str = PG_GETARG_CSTRING(0);
@@ -142,6 +142,74 @@ static Datum transfn_to_numericaggstate(PG_FUNCTION_ARGS)
 	return CallAggfunction1(&flinfo, (Datum)target_state, (fmNodePtr *)&aggstate);
 }
 
+/*
+ * Handle trancoding for aggregate function -- sum(bigint), aggfnoid = 2107
+ * The input str is formatted like {$sum}
+ * 1. Transcode the input str into int8/numeric
+ * 2. Construct internal type PolyNumAggState
+ * 3. Serialize PolyNumAggState into bytea
+ */
+static Datum transfn_for_sum_bigint(PG_FUNCTION_ARGS)
+{
+	char		*str = PG_GETARG_CSTRING(0);
+	int32		typmod = PG_GETARG_INT32(2);
+	FmgrInfo	flinfo;
+	Datum		newval;
+	AggState	aggstate;
+	PolyNumAggState	*internal_polynum = makePolyNumAggStateCurrentContext(false);
+
+#ifdef HAVE_INT128
+	memset(&flinfo, 0, sizeof(FmgrInfo));
+	fmgr_info_cxt(fmgr_internal_function("int8in"), &flinfo, CurrentMemoryContext);
+	newval = InputFunctionCall(&flinfo, str, INT8OID, typmod);
+	internal_polynum->sumX = (int128)newval;
+#else
+	memset(&flinfo, 0, sizeof(FmgrInfo));
+	fmgr_info_cxt(fmgr_internal_function("int8_numeric"), &flinfo, CurrentMemoryContext);
+	newval = InputFunctionCall(&flinfo, str, NUMERICOID, typmod);
+	do_numeric_accum(internal_polynum, (Numeric)newval);
+#endif
+
+	// N(count) is not used for sum(), so here we set N = 1 as default value.
+	internal_polynum->N = 1;
+
+	memset(&flinfo, 0, sizeof(FmgrInfo));
+	fmgr_info_cxt(fmgr_internal_function("int8_avg_serialize"), &flinfo, CurrentMemoryContext);
+	Init_AggState(&aggstate);
+	return CallAggfunction1(&flinfo, (Datum)internal_polynum, (fmNodePtr *)&aggstate);
+}
+
+/*
+ * Handle trancoding for aggregate function -- avg(numeric), aggfnoid = 2114
+ * The input str is formatted like {$sum}
+ * 1. Transcode the input str into numeric
+ * 2. Construct internal type NumericAggState
+ * 3. Serialize NumericAggState into bytea
+ */
+static Datum transfn_for_sum_numeric(PG_FUNCTION_ARGS)
+{
+	char		*str = PG_GETARG_CSTRING(0);
+	int32		typmod = PG_GETARG_INT32(2);
+	FmgrInfo	flinfo;
+	Datum		sumd;
+	NumericAggState *target_state;
+	AggState 	aggstate;
+
+	memset(&flinfo, 0, sizeof(FmgrInfo));
+	fmgr_info_cxt(fmgr_internal_function("numeric_in"), &flinfo, CurrentMemoryContext);
+	sumd = InputFunctionCall(&flinfo, str, NUMERICOID, typmod);
+
+	target_state = makeNumericAggStateCurrentContext(false);
+	do_numeric_accum(target_state, (Numeric)sumd);
+	// N(count) is not used for sum(), so here we set N = 1 as default value.
+	target_state->N = 1;
+
+	memset(&flinfo, 0, sizeof(FmgrInfo));
+	fmgr_info_cxt(fmgr_internal_function("numeric_avg_serialize"), &flinfo, CurrentMemoryContext);
+	Init_AggState(&aggstate);
+	return CallAggfunction1(&flinfo, (Datum)target_state, (fmNodePtr *)&aggstate);
+}
+
 PGFunction GetTranscodingFnFromOid(Oid aggfnoid) {
 	PGFunction refnaddr = NULL;
 	if (aggfnoid == InvalidOid) 
@@ -151,20 +219,20 @@ PGFunction GetTranscodingFnFromOid(Oid aggfnoid) {
 	switch (aggfnoid) 
 	{
 		case 2100:
-		case 2107:
-			/* Those aggregate functions have same type of aggstate -- PolyNumAggState.
-			 * - 2100 pg_catalog.avg int8|bigint
-			 * - 2107 pg_catalog.sum int8|bigint
-			 */
-			refnaddr = transfn_to_polynumaggstate;
+			// - 2100 pg_catalog.avg int8|bigint
+			refnaddr = transfn_for_avg_bigint;
 			break;
 		case 2103:
+			// - 2103 pg_catalog.avg numeric
+			refnaddr = transfn_for_avg_numeric;
+			break;
+		case 2107:
+			// - 2107 pg_catalog.sum int8|bigint
+			refnaddr = transfn_for_sum_bigint;
+			break;
 		case 2114:
-			/* Those aggregate functions have same type of aggstate -- NumericAggState.
-			 * - 2103 pg_catalog.avg numeric
-			 * - 2114 pg_catalog.sum numeric
-			 */
-			refnaddr = transfn_to_numericaggstate;
+			// - 2114 pg_catalog.sum numeric
+			refnaddr = transfn_for_sum_numeric;
 			break;
 		default:
 			break;
