@@ -5,6 +5,7 @@
 -- ===================================================================
 SET timezone = 'PST8PDT';
 SET optimizer_trace_fallback = on;
+SET optimizer = off;
 -- If gp_enable_minmax_optimization is on, it won't generate aggregate functions pushdown plan.
 SET gp_enable_minmax_optimization = off;
 

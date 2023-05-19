@@ -4,6 +4,7 @@
 -- ===================================================================
 SET timezone = 'PST8PDT';
 SET optimizer_trace_fallback = on;
+SET optimizer = off;
 -- If gp_enable_minmax_optimization is on, it won't generate aggregate functions pushdown plan.
 SET gp_enable_minmax_optimization = off;
 -- Clean
@@ -55,7 +56,7 @@ SELECT count(c1), count(c3), count(c4), count(c5), count(c6), count(c7) FROM mpp
                Relations: Aggregate on (public.mpp_ft1)
                Remote SQL: SELECT count(c1), count(c3), count(c4), count(c5), count(c6), count(c7) FROM "MPP_S 1"."T 1"
  Optimizer: Postgres query optimizer
- Settings: gp_enable_minmax_optimization = 'off'
+ Settings: gp_enable_minmax_optimization = 'off', optimizer = 'off'
 (10 rows)
 
 SELECT count(c1), count(c3), count(c4), count(c5), count(c6), count(c7) FROM mpp_ft1;
@@ -77,7 +78,7 @@ SELECT sum(c1), sum(c3), sum(c4), sum(c5), sum(c6), sum(c7) FROM mpp_ft1;
                Relations: Aggregate on (public.mpp_ft1)
                Remote SQL: SELECT sum(c1), sum(c3), sum(c4), sum(c5), sum(c6), sum(c7) FROM "MPP_S 1"."T 1"
  Optimizer: Postgres query optimizer
- Settings: gp_enable_minmax_optimization = 'off'
+ Settings: gp_enable_minmax_optimization = 'off', optimizer = 'off'
 (10 rows)
 
 SELECT sum(c1), sum(c3), sum(c4), sum(c5), sum(c6), sum(c7) FROM mpp_ft1;
@@ -99,7 +100,7 @@ SELECT avg(c1), avg(c3), avg(c4), avg(c5), avg(c6), avg(c7) FROM mpp_ft1;
                Relations: Aggregate on (public.mpp_ft1)
                Remote SQL: SELECT array[count(c1), sum(c1)], array[count(c3), sum(c3)], array[count(c4), sum(c4)], array[count(c5), sum(c5), count(c5)*var_pop(c5)], array[count(c6), sum(c6), count(c6)*var_pop(c6)], array[count(c7), sum(c7)] FROM "MPP_S 1"."T 1"
  Optimizer: Postgres query optimizer
- Settings: gp_enable_minmax_optimization = 'off'
+ Settings: gp_enable_minmax_optimization = 'off', optimizer = 'off'
 (10 rows)
 
 SELECT avg(c1), avg(c3), avg(c4), avg(c5), avg(c6), avg(c7) FROM mpp_ft1;
@@ -121,7 +122,7 @@ SELECT min(c1), min(c3), min(c4), min(c5), min(c6), min(c7) FROM mpp_ft1;
                Relations: Aggregate on (public.mpp_ft1)
                Remote SQL: SELECT min(c1), min(c3), min(c4), min(c5), min(c6), min(c7) FROM "MPP_S 1"."T 1"
  Optimizer: Postgres query optimizer
- Settings: gp_enable_minmax_optimization = 'off'
+ Settings: gp_enable_minmax_optimization = 'off', optimizer = 'off'
 (10 rows)
 
 SELECT min(c1), min(c3), min(c4), min(c5), min(c6), min(c7) FROM mpp_ft1;
@@ -143,7 +144,7 @@ SELECT max(c1), max(c3), max(c4), max(c5), max(c6), max(c7) FROM mpp_ft1;
                Relations: Aggregate on (public.mpp_ft1)
                Remote SQL: SELECT max(c1), max(c3), max(c4), max(c5), max(c6), max(c7) FROM "MPP_S 1"."T 1"
  Optimizer: Postgres query optimizer
- Settings: gp_enable_minmax_optimization = 'off'
+ Settings: gp_enable_minmax_optimization = 'off', optimizer = 'off'
 (10 rows)
 
 SELECT max(c1), max(c3), max(c4), max(c5), max(c6), max(c7) FROM mpp_ft1;
@@ -176,7 +177,7 @@ SELECT count(c1), sum(c3), avg(c4), min(c5), max(c6), count(c1) * (random() <= 1
                                  Relations: Aggregate on (public.mpp_ft1)
                                  Remote SQL: SELECT c2, count(c1), sum(c3), array[count(c4), sum(c4)], min(c5), max(c6) FROM "MPP_S 1"."T 1" GROUP BY 1
  Optimizer: Postgres query optimizer
- Settings: gp_enable_minmax_optimization = 'off'
+ Settings: gp_enable_minmax_optimization = 'off', optimizer = 'off'
 (20 rows)
 
 SELECT count(c1), sum(c3), avg(c4), min(c5), max(c6), count(c1) * (random() <= 1)::int as count2 FROM mpp_ft1 GROUP BY c2 ORDER BY c2;
@@ -209,7 +210,7 @@ SELECT sum(c1 * (random() <= 1)::int) as sum, avg(c1) FROM mpp_ft1;
                      Output: c1, c2, c3, c4, c5, c6, c7
                      Remote SQL: SELECT c1 FROM "MPP_S 1"."T 1"
  Optimizer: Postgres query optimizer
- Settings: gp_enable_minmax_optimization = 'off'
+ Settings: gp_enable_minmax_optimization = 'off', optimizer = 'off'
 (11 rows)
 
 SELECT sum(c1 * (random() <= 1)::int) as sum, avg(c1) FROM mpp_ft1;
@@ -248,7 +249,7 @@ SELECT c2/2, sum(c2) * (c2/2) FROM mpp_ft1 GROUP BY c2/2 ORDER BY c2/2;
                                  Output: (c2 / 2), c2
                                  Remote SQL: SELECT c2 FROM "MPP_S 1"."T 1"
  Optimizer: Postgres query optimizer
- Settings: gp_enable_minmax_optimization = 'off'
+ Settings: gp_enable_minmax_optimization = 'off', optimizer = 'off'
 (20 rows)
 
 SELECT c2/2, sum(c2) * (c2/2) FROM mpp_ft1 GROUP BY c2/2 ORDER BY c2/2;
@@ -286,7 +287,7 @@ SELECT count(x.a), sum(x.a) FROM (SELECT c2 a, sum(c1) b FROM mpp_ft1 GROUP BY c
                                        Relations: Aggregate on (public.mpp_ft1)
                                        Remote SQL: SELECT c2, sqrt(c1), sum(c1) FROM "MPP_S 1"."T 1" GROUP BY 1, 2
  Optimizer: Postgres query optimizer
- Settings: gp_enable_minmax_optimization = 'off'
+ Settings: gp_enable_minmax_optimization = 'off', optimizer = 'off'
 (21 rows)
 
 SELECT count(x.a), sum(x.a) FROM (SELECT c2 a, sum(c1) b FROM mpp_ft1 GROUP BY c2, sqrt(c1) ORDER BY 1, 2) x;
@@ -317,7 +318,7 @@ SELECT c2 * (random() <= 1)::int as sum1, sum(c1) * c2 as sum2 FROM mpp_ft1 GROU
                            Relations: Aggregate on (public.mpp_ft1)
                            Remote SQL: SELECT c2, sum(c1) FROM "MPP_S 1"."T 1" GROUP BY 1
  Optimizer: Postgres query optimizer
- Settings: gp_enable_minmax_optimization = 'off'
+ Settings: gp_enable_minmax_optimization = 'off', optimizer = 'off'
 (18 rows)
 
 SELECT c2 * (random() <= 1)::int as sum1, sum(c1) * c2 as sum2 FROM mpp_ft1 GROUP BY c2 ORDER BY 1, 2;
@@ -359,7 +360,7 @@ SELECT c2 * (random() <= 1)::int as c2 FROM mpp_ft1 GROUP BY c2 * (random() <= 1
                                  Output: (c2 * ((random() <= '1'::double precision))::integer)
                                  Remote SQL: SELECT c2 FROM "MPP_S 1"."T 1"
  Optimizer: Postgres query optimizer
- Settings: gp_enable_minmax_optimization = 'off'
+ Settings: gp_enable_minmax_optimization = 'off', optimizer = 'off'
 (20 rows)
 
 SELECT c2 * (random() <= 1)::int as c2 FROM mpp_ft1 GROUP BY c2 * (random() <= 1)::int ORDER BY 1;
@@ -399,7 +400,7 @@ SELECT count(c2) w, c2 x, 5 y, 7.0 z FROM mpp_ft1 GROUP BY 2, y, 9.0::int ORDER 
                            Relations: Aggregate on (public.mpp_ft1)
                            Remote SQL: SELECT c2, 5, 9, count(c2) FROM "MPP_S 1"."T 1" GROUP BY 1, 2, 3
  Optimizer: Postgres query optimizer
- Settings: gp_enable_minmax_optimization = 'off'
+ Settings: gp_enable_minmax_optimization = 'off', optimizer = 'off'
 (18 rows)
 
 SELECT count(c2) w, c2 x, 5 y, 7.0 z FROM mpp_ft1 GROUP BY 2, y, 9.0::int ORDER BY 2;
@@ -440,7 +441,7 @@ SELECT c2, c2 FROM mpp_ft1 WHERE c2 > 6 GROUP BY 1, 2 ORDER BY sum(c1);
                            Relations: Aggregate on (public.mpp_ft1)
                            Remote SQL: SELECT c2, c2, sum(c1) FROM "MPP_S 1"."T 1" WHERE ((c2 > 6)) GROUP BY 1, 2
  Optimizer: Postgres query optimizer
- Settings: gp_enable_minmax_optimization = 'off'
+ Settings: gp_enable_minmax_optimization = 'off', optimizer = 'off'
 (18 rows)
 
 SELECT c2, c2 FROM mpp_ft1 WHERE c2 > 6 GROUP BY 1, 2 ORDER BY sum(c1);
@@ -477,7 +478,7 @@ SELECT c2, sum(c1) FROM mpp_ft1 GROUP BY c2 HAVING avg(c1) < 500 AND sum(c1) < 1
                                  Output: c1, c2, c3, c4, c5, c6, c7
                                  Remote SQL: SELECT c1, c2 FROM "MPP_S 1"."T 1"
  Optimizer: Postgres query optimizer
- Settings: gp_enable_minmax_optimization = 'off'
+ Settings: gp_enable_minmax_optimization = 'off', optimizer = 'off'
 (21 rows)
 
 SELECT c2, sum(c1) FROM mpp_ft1 GROUP BY c2 HAVING avg(c1) < 500 AND sum(c1) < 199200 ORDER BY c2;
@@ -505,7 +506,7 @@ SELECT exists(SELECT 1 FROM pg_aggregate), sum(c1) FROM mpp_ft1;
                Relations: Aggregate on (public.mpp_ft1)
                Remote SQL: SELECT sum(c1) FROM "MPP_S 1"."T 1"
  Optimizer: Postgres query optimizer
- Settings: gp_enable_minmax_optimization = 'off'
+ Settings: gp_enable_minmax_optimization = 'off', optimizer = 'off'
 (13 rows)
 
 SELECT exists(SELECT 1 FROM pg_aggregate), sum(c1) FROM mpp_ft1;
@@ -536,7 +537,7 @@ SELECT exists(SELECT 1 FROM pg_aggregate), sum(c1) FROM mpp_ft1 group by 1;
                            Output: $0, mpp_ft1.c1
                            Remote SQL: SELECT c1 FROM "MPP_S 1"."T 1"
  Optimizer: Postgres query optimizer
- Settings: gp_enable_minmax_optimization = 'off'
+ Settings: gp_enable_minmax_optimization = 'off', optimizer = 'off'
 (19 rows)
 
 SELECT exists(SELECT 1 FROM pg_aggregate), sum(c1) FROM mpp_ft1 group by 1;
@@ -565,7 +566,7 @@ SELECT array_agg(c1 ORDER BY c1) FROM mpp_ft1 WHERE c1 < 100 GROUP BY c2 ORDER B
                      Output: c2, c1
                      Remote SQL: SELECT c1, c2 FROM "MPP_S 1"."T 1" WHERE ((c1 < 100)) ORDER BY c2 ASC NULLS LAST
  Optimizer: Postgres query optimizer
- Settings: gp_enable_minmax_optimization = 'off'
+ Settings: gp_enable_minmax_optimization = 'off', optimizer = 'off'
 (14 rows)
 
 SELECT array_agg(c1 ORDER BY c1) FROM mpp_ft1 WHERE c1 < 100 GROUP BY c2 ORDER BY 1;
@@ -605,7 +606,7 @@ SELECT sum(c1) FILTER (WHERE c1 < 100 AND c2 > 5) FROM mpp_ft1 GROUP BY c2 ORDER
                            Relations: Aggregate on (public.mpp_ft1)
                            Remote SQL: SELECT c2, sum(c1) FILTER (WHERE ((c1 < 100) AND (c2 > 5))) FROM "MPP_S 1"."T 1" GROUP BY 1
  Optimizer: Postgres query optimizer
- Settings: gp_enable_minmax_optimization = 'off'
+ Settings: gp_enable_minmax_optimization = 'off', optimizer = 'off'
 (18 rows)
 
 SELECT sum(c1) FILTER (WHERE c1 < 100 AND c2 > 5) FROM mpp_ft1 GROUP BY c2 ORDER BY 1 nulls last;
@@ -641,7 +642,7 @@ SELECT sum(c1%3), sum(DISTINCT c1%3 ORDER BY c1%3) FILTER (WHERE c1%3 < 2), c2 F
                      Output: c2, c1
                      Remote SQL: SELECT c1, c2 FROM "MPP_S 1"."T 1" WHERE ((c2 = 6))
  Optimizer: Postgres query optimizer
- Settings: gp_enable_minmax_optimization = 'off'
+ Settings: gp_enable_minmax_optimization = 'off', optimizer = 'off'
 (13 rows)
 
 SELECT sum(c1%3), sum(DISTINCT c1%3 ORDER BY c1%3) FILTER (WHERE c1%3 < 2), c2 FROM mpp_ft1 WHERE c2 = 6 GROUP BY c2;
@@ -674,7 +675,7 @@ SELECT sum(c1) FILTER (WHERE (c1 / c1) * random() <= 1) FROM mpp_ft1 GROUP BY c2
                                  Output: c1, c2, c3, c4, c5, c6, c7
                                  Remote SQL: SELECT c1, c2 FROM "MPP_S 1"."T 1"
  Optimizer: Postgres query optimizer
- Settings: gp_enable_minmax_optimization = 'off'
+ Settings: gp_enable_minmax_optimization = 'off', optimizer = 'off'
 (20 rows)
 
 SELECT sum(c1) FILTER (WHERE (c1 / c1) * random() <= 1) FROM mpp_ft1 GROUP BY c2 ORDER BY 1;
@@ -707,7 +708,7 @@ SELECT min(c5) FROM mpp_ft1;
                Relations: Aggregate on (public.mpp_ft1)
                Remote SQL: SELECT min(c5) FROM "MPP_S 1"."T 1"
  Optimizer: Postgres query optimizer
- Settings: gp_enable_minmax_optimization = 'off'
+ Settings: gp_enable_minmax_optimization = 'off', optimizer = 'off'
 (10 rows)
 
 SELECT min(c5) FROM mpp_ft1;
@@ -734,7 +735,7 @@ SELECT count(c1), max(c6) FROM mpp_ft1 GROUP BY c2;
                      Relations: Aggregate on (public.mpp_ft1)
                      Remote SQL: SELECT c2, count(c1), max(c6) FROM "MPP_S 1"."T 1" GROUP BY 1
  Optimizer: Postgres query optimizer
- Settings: gp_enable_minmax_optimization = 'off'
+ Settings: gp_enable_minmax_optimization = 'off', optimizer = 'off'
 (15 rows)
 
 SELECT count(c1), max(c6) FROM mpp_ft1 GROUP BY c2;
@@ -770,7 +771,7 @@ SELECT count(c1), sum(c3), avg(c4), min(c5), max(c6), count(c1) * (random() <= 1
                      Relations: Aggregate on (public.mpp_ft1)
                      Remote SQL: SELECT c2, count(c1), sum(c3), array[count(c4), sum(c4)], min(c5), max(c6) FROM "MPP_S 1"."T 1" GROUP BY 1
  Optimizer: Postgres query optimizer
- Settings: gp_enable_minmax_optimization = 'off'
+ Settings: gp_enable_minmax_optimization = 'off', optimizer = 'off'
 (15 rows)
 
 SELECT count(c1), sum(c3), avg(c4), min(c5), max(c6), count(c1) * (random() <= 1)::int as count2 FROM mpp_ft1 GROUP BY c2 ORDER BY c2;
@@ -810,7 +811,7 @@ SELECT count(c1), max(c6) FROM mpp_ft1 GROUP BY c2 order by c2 limit 3;
                            Output: c1, c2, c3, c4, c5, c6, c7
                            Remote SQL: SELECT c1, c2, c6 FROM "MPP_S 1"."T 1" ORDER BY c2 ASC NULLS LAST
  Optimizer: Postgres query optimizer
- Settings: gp_enable_minmax_optimization = 'off'
+ Settings: gp_enable_minmax_optimization = 'off', optimizer = 'off'
 (16 rows)
 
 SELECT count(c1), max(c6) FROM mpp_ft1 GROUP BY c2 order by c2 limit 3;
@@ -837,7 +838,7 @@ SELECT c1, c2 FROM mpp_ft1 order by c1 limit 3;
                      Output: c1, c2
                      Remote SQL: SELECT c1, c2 FROM "MPP_S 1"."T 1" ORDER BY c1 ASC NULLS LAST
  Optimizer: Postgres query optimizer
- Settings: gp_enable_minmax_optimization = 'off'
+ Settings: gp_enable_minmax_optimization = 'off', optimizer = 'off'
 (12 rows)
 
 SELECT c1, c2 FROM mpp_ft1 order by c1 limit 3;
@@ -872,7 +873,7 @@ SELECT count(*), sum(t1.c1), avg(t2.c2) FROM mpp_ft1 t1 inner join mpp_ft1 t2 on
                                  Output: t2.c2, t2.c1
                                  Remote SQL: SELECT c1, c2 FROM "MPP_S 1"."T 1" WHERE ((c1 = 2))
  Optimizer: Postgres query optimizer
- Settings: gp_enable_minmax_optimization = 'off'
+ Settings: gp_enable_minmax_optimization = 'off', optimizer = 'off'
 (20 rows)
 
 SELECT count(*), sum(t1.c1), avg(t2.c2) FROM mpp_ft1 t1 inner join mpp_ft1 t2 on (t1.c1 = t2.c1) where t1.c1 = 2;
