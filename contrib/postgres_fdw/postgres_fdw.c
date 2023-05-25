@@ -6335,26 +6335,26 @@ static void get_retrieved_partial_aggfnoids(ForeignScanState *fsstate,
 											List *retrieved_attrs,
 											List **retrieved_aggfnoids)
 {
-	ListCell *lc = NULL;
+	ListCell *lc1 = NULL, *lc2 = NULL;
 	if (!fsstate)
 	{
-		foreach(lc, retrieved_attrs)
+		foreach(lc1, retrieved_attrs)
 			*retrieved_aggfnoids = lappend_oid(*retrieved_aggfnoids, InvalidOid);
 	}
 	else
 	{
 		/* ForeignScan case */
-		ForeignScan *fsplan = castNode(ForeignScan, fsstate->ss.ps.plan);
+		ForeignScan *fsplan = (ForeignScan*)fsstate->ss.ps.plan;
 		if(!fsplan->fdw_scan_tlist)
 		{
-			foreach(lc, retrieved_attrs)
+			foreach(lc1, retrieved_attrs)
 				*retrieved_aggfnoids = lappend_oid(*retrieved_aggfnoids, InvalidOid);
 		}
 		else
 		{
-			foreach(lc, fsplan->fdw_scan_tlist)
+			forboth(lc1, retrieved_attrs, lc2, fsplan->fdw_scan_tlist)
 			{
-				TargetEntry *tle = lfirst_node(TargetEntry, lc);
+				TargetEntry *tle = lfirst_node(TargetEntry, lc2);
 
 				if (tle->expr != NULL && nodeTag(tle->expr) == T_Aggref &&
 					((Aggref *) tle->expr)->aggsplit == AGGSPLIT_INITIAL_SERIAL)
