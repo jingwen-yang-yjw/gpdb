@@ -384,7 +384,7 @@ GpPolicyFetch(Oid tbloid)
 
 			ForeignTable *f = GetForeignTable(tbloid);
 
-			if (f->exec_location == FTEXECLOCATION_ALL_SEGMENTS)
+			if (f->exec_location == FTEXECLOCATION_ALL_SEGMENTS || f->exec_location == FTEXECLOCATION_MULTI_SERVERS)
 			{
 				ForeignServer *server = GetForeignServer(f->serverid);
 				/*

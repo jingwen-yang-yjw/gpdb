@@ -822,6 +822,9 @@ CTranslatorRelcacheToDXL::GetRelDistribution(GpPolicy *gp_policy)
 // indicates that each segment is getting a separate subset of the data, most
 // likely from a distributed source. There is no assumption about the
 // distribution of this data, so we must assume it is randomly distributed.
+//
+// FTEXECLOCATION_MULTI_SERVERS: maps to a random distribution. Mostly it's same
+// as FTEXECLOCATION_ALL_SEGMENTS.
 IMDRelation::Ereldistrpolicy
 CTranslatorRelcacheToDXL::GetDistributionFromForeignRelExecLocation(
 	ForeignTable *ft)
@@ -836,6 +839,7 @@ CTranslatorRelcacheToDXL::GetDistributionFromForeignRelExecLocation(
 			dist = IMDRelation::EreldistrUniversal;
 			break;
 		case FTEXECLOCATION_ALL_SEGMENTS:
+		case FTEXECLOCATION_MULTI_SERVERS:
 			dist = IMDRelation::EreldistrRandom;
 			break;
 		default:
