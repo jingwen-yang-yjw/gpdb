@@ -1521,7 +1521,7 @@ postgresBeginForeignScan(ForeignScanState *node, int eflags)
 	 * Get connection to the foreign server.  Connection manager will
 	 * establish new connection if necessary.
 	 */
-	if(table->exec_location == FTEXECLOCATION_ALL_SEGMENTS)
+	if(table->exec_location == FTEXECLOCATION_MULTI_SERVERS)
 	{
 		if(Gp_role == GP_ROLE_EXECUTE)
 		{
@@ -1529,7 +1529,7 @@ postgresBeginForeignScan(ForeignScanState *node, int eflags)
 			rewrite_server_options(server, index);
 			fsstate->conn = GetConnection(server, user, false);
 		}
-		// If mpp_execute = 'all segments', QD won't built connection to remote pg server.
+		/* If mpp_execute = 'multi servers', QD won't built connection to remote pg server. */
 	}
 	else
 		fsstate->conn = GetConnection(server, user, false);
@@ -2210,7 +2210,7 @@ postgresIsForeignRelUpdatable(Relation rel)
 	 */
 	bool isGreenplum = false;
 	UserMapping *user = GetUserMapping(rel->rd_rel->relowner, table->serverid);
-	if(table->exec_location == FTEXECLOCATION_ALL_SEGMENTS)
+	if(table->exec_location == FTEXECLOCATION_MULTI_SERVERS)
 	{
 		int index;
 		for(index = 0; index < server->num_segments; ++index)
@@ -2509,7 +2509,7 @@ postgresBeginDirectModify(ForeignScanState *node, int eflags)
 	 * Get connection to the foreign server.  Connection manager will
 	 * establish new connection if necessary.
 	 */
-	if(table->exec_location == FTEXECLOCATION_ALL_SEGMENTS)
+	if(table->exec_location == FTEXECLOCATION_MULTI_SERVERS)
 	{
 		if(Gp_role == GP_ROLE_EXECUTE)
 		{
@@ -2517,7 +2517,7 @@ postgresBeginDirectModify(ForeignScanState *node, int eflags)
 			rewrite_server_options(server, index);
 			dmstate->conn = GetConnection(server, user, false);
 		}
-		// If mpp_execute = 'all segments', QD won't built connection to remote pg server.
+		/* If mpp_execute = 'multi servers', QD won't built connection to remote pg server. */
 	}
 	else
 		dmstate->conn = GetConnection(server, user, false);
@@ -2822,7 +2822,7 @@ estimate_path_cost_size(PlannerInfo *root,
 		/* Get the remote estimate */
 		ForeignServer *server = GetForeignServer(fpinfo->user->serverid);
 
-		if(foreignrel->exec_location == FTEXECLOCATION_ALL_SEGMENTS)
+		if(foreignrel->exec_location == FTEXECLOCATION_MULTI_SERVERS)
 		{
 			double		tmp_rows = 0;
 			int			tmp_width = 0;
@@ -3684,7 +3684,7 @@ create_foreign_modify(EState *estate,
 	user = GetUserMapping(userid, table->serverid);
 
 	/* Open connection; report that we'll create a prepared statement. */
-	if(table->exec_location == FTEXECLOCATION_ALL_SEGMENTS)
+	if(table->exec_location == FTEXECLOCATION_MULTI_SERVERS)
 	{
 		if(Gp_role == GP_ROLE_EXECUTE)
 		{
@@ -3692,7 +3692,7 @@ create_foreign_modify(EState *estate,
 			rewrite_server_options(server, index);
 			fmstate->conn = GetConnection(server, user, false);
 		}
-		// If mpp_execute = 'all segments', QD won't built connection to remote pg server.
+		/* If mpp_execute = 'multi servers', QD won't built connection to remote pg server. */
 	}
 	else
 		fmstate->conn = GetConnection(server, user, false);
@@ -4580,7 +4580,7 @@ postgresAnalyzeForeignTable(Relation relation,
 	 */
 	table = GetForeignTable(RelationGetRelid(relation));
 
-	if(table->exec_location == FTEXECLOCATION_ALL_SEGMENTS)
+	if(table->exec_location == FTEXECLOCATION_MULTI_SERVERS)
 	{
 		postgresAnalyzeForeignTableForMultiServer(relation, func, totalpages);
 		return true;
@@ -4823,7 +4823,7 @@ postgresAnalyzeForeignTableForMultiServer(Relation relation,
 	 * owner, even if the ANALYZE was started by some other user.
 	 */
 	table = GetForeignTable(RelationGetRelid(relation));
-	Assert(table->exec_location == FTEXECLOCATION_ALL_SEGMENTS);
+	Assert(table->exec_location == FTEXECLOCATION_MULTI_SERVERS);
 
 	server = GetForeignServer(table->serverid);
 	user = GetUserMapping(relation->rd_rel->relowner, table->serverid);
@@ -4910,7 +4910,7 @@ postgresAcquireSampleRowsFuncForMultiServer(Relation relation, int elevel,
 	 * owner, even if the ANALYZE was started by some other user.
 	 */
 	table = GetForeignTable(RelationGetRelid(relation));
-	Assert(table->exec_location == FTEXECLOCATION_ALL_SEGMENTS);
+	Assert(table->exec_location == FTEXECLOCATION_MULTI_SERVERS);
 
 	server = GetForeignServer(table->serverid);
 	user = GetUserMapping(relation->rd_rel->relowner, table->serverid);
