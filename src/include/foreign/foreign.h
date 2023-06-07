@@ -107,6 +107,7 @@ extern Oid	get_foreign_server_oid(const char *servername, bool missing_ok);
 #define FTEXECLOCATION_ANY 'a'
 #define FTEXECLOCATION_COORDINATOR 'c'
 #define FTEXECLOCATION_ALL_SEGMENTS 's'
+#define FTEXECLOCATION_MULTI_SERVERS 'm'
 #define FTEXECLOCATION_NOT_DEFINED 'n'
 
 #endif							/* FOREIGN_H */

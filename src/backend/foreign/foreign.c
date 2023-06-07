@@ -63,6 +63,8 @@ SeparateOutMppExecute(List **options)
 				exec_location = FTEXECLOCATION_COORDINATOR;
 			else if (pg_strcasecmp(mpp_execute, "all segments") == 0)
 				exec_location = FTEXECLOCATION_ALL_SEGMENTS;
+			else if (pg_strcasecmp(mpp_execute, "multi servers") == 0)
+				exec_location = FTEXECLOCATION_MULTI_SERVERS;
 			else
 			{
 				ereport(ERROR,

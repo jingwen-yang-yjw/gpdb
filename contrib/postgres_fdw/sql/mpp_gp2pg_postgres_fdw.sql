@@ -18,7 +18,7 @@ CREATE EXTENSION postgres_fdw;
 
 CREATE SERVER pgserver FOREIGN DATA WRAPPER postgres_fdw
   OPTIONS (dbname 'contrib_regression', multi_hosts 'localhost localhost',
-           multi_ports '5432 5555', num_segments '2', mpp_execute 'all segments');
+           multi_ports '5432 5555', num_segments '2', mpp_execute 'multi servers');
 
 CREATE USER MAPPING FOR CURRENT_USER SERVER pgserver;
 
