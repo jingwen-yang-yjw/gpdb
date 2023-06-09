@@ -10,7 +10,7 @@ SET gp_enable_minmax_optimization = off;
 -- Clean
 -- start_ignore
 DROP EXTENSION IF EXISTS postgres_fdw CASCADE;
-NOTICE:  drop cascades to 49 other objects
+NOTICE:  drop cascades to 55 other objects
 DETAIL:  drop cascades to server testserver1
 drop cascades to user mapping for public on server testserver1
 drop cascades to server pgserver
@@ -60,6 +60,12 @@ drop cascades to foreign table fpagg_tab_p3
 drop cascades to server pgserver2
 drop cascades to user mapping for gpadmin on server pgserver2
 drop cascades to foreign table ft6
+drop cascades to server loopback
+drop cascades to user mapping for gpadmin on server loopback
+drop cascades to foreign table postgres_fdw_gp.gp_ft1
+drop cascades to foreign table postgres_fdw_gp.gp_all
+drop cascades to foreign table postgres_fdw_gp.gp_any
+drop cascades to foreign table postgres_fdw_gp.gp_coord
 -- end_ignore
 CREATE EXTENSION postgres_fdw;
 CREATE SERVER pgserver FOREIGN DATA WRAPPER postgres_fdw
@@ -74,6 +80,8 @@ CREATE USER MAPPING FOR CURRENT_USER SERVER pgserver;
 SET
 CREATE SCHEMA
 CREATE TABLE
+CREATE TABLE
+ALTER TABLE
 ALTER TABLE
 INSERT 0 500
 UPDATE 500
@@ -83,6 +91,8 @@ ANALYZE
 SET
 CREATE SCHEMA
 CREATE TABLE
+CREATE TABLE
+ALTER TABLE
 ALTER TABLE
 INSERT 0 500
 UPDATE 500
@@ -99,6 +109,10 @@ CREATE FOREIGN TABLE mpp_ft1 (
 	c6 double precision,
 	c7 numeric
 ) SERVER pgserver OPTIONS (schema_name 'MPP_S 1', table_name 'T 1');
+CREATE FOREIGN TABLE mpp_ft2 (
+	c1 int,
+	c2 int
+) SERVER pgserver OPTIONS (schema_name 'MPP_S 1', table_name 'T 2');
 -- ===================================================================
 -- tests for validator
 -- ===================================================================
@@ -125,9 +139,9 @@ ALTER FOREIGN TABLE mpp_ft1 OPTIONS (add use_remote_estimate 'true');
 EXPLAIN VERBOSE SELECT * FROM mpp_ft1;
                                       QUERY PLAN                                       
 ---------------------------------------------------------------------------------------
- Gather Motion 2:1  (slice1; segments: 2)  (cost=100.00..176.00 rows=2000 width=32836)
+ Gather Motion 2:1  (slice1; segments: 2)  (cost=100.00..176.00 rows=2000 width=32837)
    Output: c1, c2, c3, c4, c5, c6, c7
-   ->  Foreign Scan on public.mpp_ft1  (cost=100.00..146.00 rows=1000 width=32836)
+   ->  Foreign Scan on public.mpp_ft1  (cost=100.00..146.00 rows=1000 width=32837)
          Output: c1, c2, c3, c4, c5, c6, c7
          Remote SQL: SELECT c1, c2, c3, c4, c5, c6, c7 FROM "MPP_S 1"."T 1"
  Optimizer: Postgres query optimizer
@@ -974,4 +988,45 @@ SELECT count(*), sum(t1.c1), avg(t2.c2) FROM mpp_ft1 t1 inner join mpp_ft1 t2 on
 -------+-----+--------------------
      1 |   2 | 2.0000000000000000
 (1 row)
+
+-- ===================================================================
+-- Insert, update and delete
+-- ===================================================================
+INSERT INTO mpp_ft2 SELECT id, id % 5 FROM generate_series(1, 10) as id;
+SELECT * FROM mpp_ft2 ORDER BY c1;
+ c1 | c2 
+----+----
+  1 |  1
+  2 |  2
+  3 |  3
+  4 |  4
+  5 |  0
+  6 |  1
+  7 |  2
+  8 |  3
+  9 |  4
+ 10 |  0
+(10 rows)
+
+UPDATE mpp_ft2 SET c1 = 0 WHERE c2 = 0;
+SELECT * FROM mpp_ft2 ORDER BY c1;
+ c1 | c2 
+----+----
+  0 |  0
+  0 |  0
+  1 |  1
+  2 |  2
+  3 |  3
+  4 |  4
+  6 |  1
+  7 |  2
+  8 |  3
+  9 |  4
+(10 rows)
+
+DELETE FROM mpp_ft2;
+SELECT * FROM mpp_ft2 ORDER BY c1;
+ c1 | c2 
+----+----
+(0 rows)
 

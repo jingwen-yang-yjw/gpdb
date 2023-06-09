@@ -1587,13 +1587,6 @@ ExecCheckXactReadOnly(PlannedStmt *plannedstmt)
 		if ((rte->requiredPerms & (~ACL_SELECT)) == 0)
 			continue;
 
-		/*
-		 * External and foreign tables don't need two phase commit which is for
-		 * local mpp tables
-		 */
-		if (get_rel_relkind(rte->relid) == RELKIND_FOREIGN_TABLE)
-			continue;
-
 		if (isTempNamespace(get_rel_namespace(rte->relid)))
 		{
 			ExecutorMarkTransactionDoesWrites();

@@ -17,8 +17,14 @@ CREATE TABLE "MPP_S 1"."T 1" (
 	c7 numeric
 );
 
+CREATE TABLE "MPP_S 1"."T 2" (
+	c1 int,
+	c2 int
+);
+
 -- Disable autovacuum for these tables to avoid unexpected effects of that
 ALTER TABLE "MPP_S 1"."T 1" SET (autovacuum_enabled = 'false');
+ALTER TABLE "MPP_S 1"."T 2" SET (autovacuum_enabled = 'false');
 
 INSERT INTO "MPP_S 1"."T 1" (c1, c2, c3, c4)
 	SELECT id,

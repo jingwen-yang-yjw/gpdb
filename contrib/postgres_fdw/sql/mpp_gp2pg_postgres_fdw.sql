@@ -43,6 +43,11 @@ CREATE FOREIGN TABLE mpp_ft1 (
 	c7 numeric
 ) SERVER pgserver OPTIONS (schema_name 'MPP_S 1', table_name 'T 1');
 
+CREATE FOREIGN TABLE mpp_ft2 (
+	c1 int,
+	c2 int
+) SERVER pgserver OPTIONS (schema_name 'MPP_S 1', table_name 'T 2');
+
 -- ===================================================================
 -- tests for validator
 -- ===================================================================
@@ -198,3 +203,13 @@ SELECT c1, c2 FROM mpp_ft1 order by c1 limit 3;
 EXPLAIN (VERBOSE, COSTS OFF)
 SELECT count(*), sum(t1.c1), avg(t2.c2) FROM mpp_ft1 t1 inner join mpp_ft1 t2 on (t1.c1 = t2.c1) where t1.c1 = 2;
 SELECT count(*), sum(t1.c1), avg(t2.c2) FROM mpp_ft1 t1 inner join mpp_ft1 t2 on (t1.c1 = t2.c1) where t1.c1 = 2;
+
+-- ===================================================================
+-- Insert, update and delete
+-- ===================================================================
+INSERT INTO mpp_ft2 SELECT id, id % 5 FROM generate_series(1, 10) as id;
+SELECT * FROM mpp_ft2 ORDER BY c1;
+UPDATE mpp_ft2 SET c1 = 0 WHERE c2 = 0;
+SELECT * FROM mpp_ft2 ORDER BY c1;
+DELETE FROM mpp_ft2;
+SELECT * FROM mpp_ft2 ORDER BY c1;
