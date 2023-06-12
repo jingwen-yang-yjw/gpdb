@@ -163,7 +163,7 @@ postgres_fdw_validator(PG_FUNCTION_ARGS)
 		}
 	}
 
-	if(list_length(host_list) != list_length(port_list))
+	if (list_length(host_list) != list_length(port_list))
 		ereport(ERROR,
 				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
 				 errmsg("the number of multi_hosts and multi_ports is not same.")));
