@@ -3386,12 +3386,7 @@ create_foreignscan_path(PlannerInfo *root, RelOptInfo *rel,
 			CdbPathLocus_MakeGeneral(&(pathnode->path.locus));
 			break;
 		case FTEXECLOCATION_ALL_SEGMENTS:
-		case FTEXECLOCATION_MULTI_SERVERS:
-			server = GetForeignServer(rel->serverid);
-			if (server)
-				CdbPathLocus_MakeStrewn(&(pathnode->path.locus), server->num_segments);
-			else
-				CdbPathLocus_MakeStrewn(&(pathnode->path.locus), getgpsegmentCount());
+			pathnode->path.locus = cdbpathlocus_from_baserel(root, rel);
 			break;
 		case FTEXECLOCATION_COORDINATOR:
 			CdbPathLocus_MakeEntry(&(pathnode->path.locus));
@@ -3463,12 +3458,7 @@ create_foreign_join_path(PlannerInfo *root, RelOptInfo *rel,
 			CdbPathLocus_MakeGeneral(&(pathnode->path.locus));
 			break;
 		case FTEXECLOCATION_ALL_SEGMENTS:
-		case FTEXECLOCATION_MULTI_SERVERS:
-			server = GetForeignServer(rel->serverid);
-			if (server)
-				CdbPathLocus_MakeStrewn(&(pathnode->path.locus), server->num_segments);
-			else
-				CdbPathLocus_MakeStrewn(&(pathnode->path.locus), getgpsegmentCount());
+			pathnode->path.locus = cdbpathlocus_from_baserel(root, rel);
 			break;
 		case FTEXECLOCATION_COORDINATOR:
 			CdbPathLocus_MakeEntry(&(pathnode->path.locus));
@@ -3528,12 +3518,7 @@ create_foreign_upper_path(PlannerInfo *root, RelOptInfo *rel,
 			CdbPathLocus_MakeGeneral(&(pathnode->path.locus));
 			break;
 		case FTEXECLOCATION_ALL_SEGMENTS:
-		case FTEXECLOCATION_MULTI_SERVERS:
-			server = GetForeignServer(rel->serverid);
-			if (server)
-				CdbPathLocus_MakeStrewn(&(pathnode->path.locus), server->num_segments);
-			else
-				CdbPathLocus_MakeStrewn(&(pathnode->path.locus), getgpsegmentCount());
+			pathnode->path.locus = cdbpathlocus_from_baserel(root, rel);
 			break;
 		case FTEXECLOCATION_COORDINATOR:
 			CdbPathLocus_MakeEntry(&(pathnode->path.locus));

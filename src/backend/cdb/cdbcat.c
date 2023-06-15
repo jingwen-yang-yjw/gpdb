@@ -493,6 +493,42 @@ GpPolicyFetch(Oid tbloid)
 		ReleaseSysCache(gp_policy_tuple);
 	}
 
+	if (get_rel_relkind(tbloid) == RELKIND_FOREIGN_TABLE)
+	{
+		/*
+		 * Similar to the external table creation, there is a transient state
+		 * during creation of a foreign table, where the pg_class entry has
+		 * been created, before the pg_foreign_table entry has been created.
+		 */
+		HeapTuple	tp = SearchSysCache1(FOREIGNTABLEREL, ObjectIdGetDatum(tbloid));
+
+		if (HeapTupleIsValid(tp))
+		{
+			ReleaseSysCache(tp);
+
+			ForeignTable *f = GetForeignTable(tbloid);
+
+			if (f->exec_location == FTEXECLOCATION_ALL_SEGMENTS)
+			{
+				/*
+				 * If foreign tables don't have a specific distribution
+				 * policy, we will create a random partitioned policy when
+				 * mpp_execute is set to 'all segments'.
+				 */
+				if(!policy)
+					policy = createRandomPartitionedPolicy(getgpsegmentCount());
+
+				/*
+				 * If foreign server have option 'num_segments', we need to
+				 * adjust policy.
+				 */
+				ForeignServer *server = GetForeignServer(f->serverid);
+				if (server)
+					policy->numsegments = server->num_segments;
+			}
+		}
+	}
+
 	/* Interpret absence of a valid policy row as POLICYTYPE_ENTRY */
 	if (policy == NULL)
 	{
