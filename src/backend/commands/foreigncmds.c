@@ -1590,6 +1590,25 @@ CreateForeignTable(CreateForeignTableStmt *stmt, Oid relid, bool skip_permission
 	fdw = GetForeignDataWrapper(server->fdwid);
 
 	/*
+	 * Check compatibility between DistributedBy and mpp_execute option.
+	 */
+	if (stmt->distributedBy != NULL)
+	{
+		if (strstr(fdw->fdwname, "pxf_fdw") != NULL)
+			ereport(ERROR, (errcode(ERRCODE_FDW_ERROR), errmsg("pxf_fdw doesn't support DISTRIBUTED BY clause")));
+
+		char mpp_execute = SeparateOutMppExecute(&stmt->options);
+		if (mpp_execute == FTEXECLOCATION_NOT_DEFINED)
+			mpp_execute = server->exec_location;
+
+		if (mpp_execute != FTEXECLOCATION_MULTI_SERVERS)
+			ereport(ERROR, (errcode(ERRCODE_FDW_ERROR), errmsg("Only if mpp_execute = 'multi servers', foreign table support DISTRIBUTED BY clause.")));
+
+		if (stmt->distributedBy->ptype != POLICYTYPE_PARTITIONED && mpp_execute == FTEXECLOCATION_MULTI_SERVERS)
+			ereport(ERROR, (errcode(ERRCODE_FDW_ERROR), errmsg("replicated distribution can't match option mpp_execute = \"multi servers\"")));
+	}
+
+	/*
 	 * Insert tuple into pg_foreign_table.
 	 */
 	memset(values, 0, sizeof(values));
