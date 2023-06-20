@@ -5144,6 +5144,12 @@ postgresImportForeignSchema(ImportForeignSchemaStmt *stmt, Oid serverOid)
 	 * establish new connection if necessary.
 	 */
 	server = GetForeignServer(serverOid);
+
+	if (server->exec_location == FTEXECLOCATION_MULTI_SERVERS)
+		ereport(ERROR,
+				(errcode(ERRCODE_FDW_ERROR),
+				 errmsg("If mpp_execute = \"multi servers\", it doesn't support import foreign schema")));
+
 	mapping = GetUserMapping(GetUserId(), server->serverid);
 	conn = GetConnection(server, mapping, false);
 
