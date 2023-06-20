@@ -22,7 +22,7 @@
 #include "commands/extension.h"
 #include "utils/builtins.h"
 #include "utils/varlena.h"
-
+#include "cdb/cdbutil.h"
 
 /*
  * Describes the valid options for objects that this wrapper uses.
@@ -69,6 +69,8 @@ postgres_fdw_validator(PG_FUNCTION_ARGS)
 	Oid			catalog = PG_GETARG_OID(1);
 	ListCell   *cell;
 	List		*host_list = NIL, *port_list = NIL;
+	char		*mpp_execute = "master";
+	int			num_segments = getgpsegmentCount();
 
 	/* Build our options lists if we didn't yet. */
 	InitPgFdwOptions();
@@ -161,12 +163,31 @@ postgres_fdw_validator(PG_FUNCTION_ARGS)
 			while ((one_port = strsep(&multi_ports, " ")) != NULL)
 				port_list = lappend(port_list, makeString(one_port));
 		}
+		else if (strcmp(def->defname, "mpp_execute") == 0)
+			mpp_execute = defGetString(def);
+		else if (strcmp(def->defname, "num_segments") == 0)
+			num_segments = strtol(defGetString(def), NULL, 10);
 	}
 
-	if(list_length(host_list) != list_length(port_list))
-		ereport(ERROR,
-				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-				 errmsg("the number of multi_hosts and multi_ports is not same.")));
+	if (strcmp(mpp_execute, "multi servers") == 0)
+	{
+		if (catalog != ForeignServerRelationId)
+			ereport(ERROR,
+					(errcode(ERRCODE_FDW_INVALID_ATTRIBUTE_VALUE),
+					 errmsg("Only when CREATE SERVER, mpp_execute can be set to \"multi servers\"")));
+
+		if (num_segments != list_length(host_list) || list_length(host_list) != list_length(port_list))
+			ereport(ERROR,
+					(errcode(ERRCODE_FDW_INVALID_ATTRIBUTE_VALUE),
+					 errmsg("server option num_segments, multi_hosts and multi_ports don't match.")));
+	}
+	else
+	{
+		if (host_list != NIL || port_list != NIL)
+			ereport(ERROR,
+					(errcode(ERRCODE_FDW_INVALID_OPTION_NAME),
+					 errmsg("If mpp_execute != \"multi servers\", multi_hosts and multi_ports are invalid options.")));
+	}
 
 	PG_RETURN_VOID();
 }
@@ -200,6 +221,9 @@ InitPgFdwOptions(void)
 		/* fetch_size is available on both server and table */
 		{"fetch_size", ForeignServerRelationId, false},
 		{"fetch_size", ForeignTableRelationId, false},
+		/* mpp_execute is available on both server and table */
+		{"mpp_execute", ForeignServerRelationId, false},
+		{"mpp_execute", ForeignTableRelationId, false},
 		/* num_segments is available on server only */
 		{"num_segments", ForeignServerRelationId, false},
 		/* hosts and ports is avaiable on server only */

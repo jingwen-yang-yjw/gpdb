@@ -104,8 +104,21 @@ CREATE FOREIGN TABLE mpp_ft1 (
 -- ===================================================================
 CREATE SERVER testserver FOREIGN DATA WRAPPER postgres_fdw
   OPTIONS (dbname 'contrib_regression', multi_hosts 'localhost localhost',
-           multi_ports '5432', num_segments '2', mpp_execute 'all segments');
-ERROR:  the number of multi_hosts and multi_ports is not same.
+           multi_ports '5432 5432', num_segments '2', mpp_execute 'all segments');
+ERROR:  If mpp_execute != "multi servers", multi_hosts and multi_ports are invalid options.
+CREATE SERVER testserver FOREIGN DATA WRAPPER postgres_fdw
+  OPTIONS (dbname 'contrib_regression', multi_hosts 'localhost localhost',
+           multi_ports '5432', num_segments '2', mpp_execute 'multi servers');
+ERROR:  server option num_segments, multi_hosts and multi_ports don't match.
+CREATE SERVER testserver FOREIGN DATA WRAPPER postgres_fdw
+  OPTIONS (dbname 'contrib_regression', multi_hosts 'localhost localhost',
+           multi_ports '5432 5432', num_segments '1', mpp_execute 'multi servers');
+ERROR:  server option num_segments, multi_hosts and multi_ports don't match.
+CREATE FOREIGN TABLE mpp_test (
+	c1 int,
+	c2 int
+) SERVER pgserver OPTIONS (mpp_execute 'multi servers');
+ERROR:  Only when CREATE SERVER, mpp_execute can be set to "multi servers"  (seg2 127.0.0.1:7004 pid=21970)
 -- ===================================================================
 -- Simple queries
 -- ===================================================================
@@ -135,3 +148,9 @@ EXPLAIN VERBOSE SELECT * FROM mpp_ft1;
 (7 rows)
 
 ALTER FOREIGN TABLE mpp_ft1 OPTIONS (drop use_remote_estimate);
+-- ===================================================================
+-- When mpp_execute = 'multi servers', we don't support IMPORT FOREIGN SCHEMA
+-- ===================================================================
+CREATE SCHEMA mpp_import_dest;
+IMPORT FOREIGN SCHEMA import_source FROM SERVER pgserver INTO mpp_import_dest;
+ERROR:  If mpp_execute = "multi servers", it doesn't support import foreign schema

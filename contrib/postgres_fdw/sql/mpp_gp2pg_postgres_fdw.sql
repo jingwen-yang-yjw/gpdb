@@ -48,7 +48,20 @@ CREATE FOREIGN TABLE mpp_ft1 (
 -- ===================================================================
 CREATE SERVER testserver FOREIGN DATA WRAPPER postgres_fdw
   OPTIONS (dbname 'contrib_regression', multi_hosts 'localhost localhost',
-           multi_ports '5432', num_segments '2', mpp_execute 'all segments');
+           multi_ports '5432 5432', num_segments '2', mpp_execute 'all segments');
+
+CREATE SERVER testserver FOREIGN DATA WRAPPER postgres_fdw
+  OPTIONS (dbname 'contrib_regression', multi_hosts 'localhost localhost',
+           multi_ports '5432', num_segments '2', mpp_execute 'multi servers');
+
+CREATE SERVER testserver FOREIGN DATA WRAPPER postgres_fdw
+  OPTIONS (dbname 'contrib_regression', multi_hosts 'localhost localhost',
+           multi_ports '5432 5432', num_segments '1', mpp_execute 'multi servers');
+
+CREATE FOREIGN TABLE mpp_test (
+	c1 int,
+	c2 int
+) SERVER pgserver OPTIONS (mpp_execute 'multi servers');
 
 -- ===================================================================
 -- Simple queries
@@ -57,3 +70,9 @@ EXPLAIN VERBOSE SELECT * FROM mpp_ft1;
 ALTER FOREIGN TABLE mpp_ft1 OPTIONS (add use_remote_estimate 'true');
 EXPLAIN VERBOSE SELECT * FROM mpp_ft1;
 ALTER FOREIGN TABLE mpp_ft1 OPTIONS (drop use_remote_estimate);
+
+-- ===================================================================
+-- When mpp_execute = 'multi servers', we don't support IMPORT FOREIGN SCHEMA
+-- ===================================================================
+CREATE SCHEMA mpp_import_dest;
+IMPORT FOREIGN SCHEMA import_source FROM SERVER pgserver INTO mpp_import_dest;
