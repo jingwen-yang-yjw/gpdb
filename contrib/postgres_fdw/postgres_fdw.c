@@ -1414,7 +1414,7 @@ static int get_hostinfo_index(EState *estate)
 			break;
 	}
 
-	if(process_no < 0)
+	if (process_no < 0)
 		ereport(ERROR, (errmsg("No valid slice number")));
 
 	return process_no;
@@ -1435,16 +1435,16 @@ static void rewrite_server_options(ForeignServer *server, int index)
 
 		if (strcmp(d->defname, "host") == 0)
 			host = d;
-		else if(strcmp(d->defname, "port") == 0)
+		else if (strcmp(d->defname, "port") == 0)
 			port = d;
-		else if(strcmp(d->defname, "multi_hosts") == 0)
+		else if (strcmp(d->defname, "multi_hosts") == 0)
 			multi_hosts = pstrdup(defGetString(d));
-		else if(strcmp(d->defname, "multi_ports") == 0)
+		else if (strcmp(d->defname, "multi_ports") == 0)
 			multi_ports = pstrdup(defGetString(d));
 	}
 
 	/* Using origin host and port in server option */
-	if(!multi_hosts || !multi_ports)
+	if (!multi_hosts || !multi_ports)
 		return;
 
 	List *host_list = NIL, *port_list = NIL;
@@ -1454,16 +1454,17 @@ static void rewrite_server_options(ForeignServer *server, int index)
 	while ((one_port = strsep(&multi_ports, " ")) != NULL)
 		port_list = lappend(port_list, makeString(one_port));
 
-	int num_host = list_length(host_list), num_port = list_length(port_list);
-	if(server->num_segments != num_host || num_host != num_port || index >= num_host)
+	int num_host = list_length(host_list);
+	int num_port = list_length(port_list);
+	if (server->num_segments != num_host || num_host != num_port || index >= num_host)
 		ereport(ERROR, (errmsg("server option num_segments, multi_hosts and multi_ports don't match.")));
 
-	if(host)
+	if (host)
 		host->arg = (Node *) list_nth(host_list, index);
 	else
 		server->options = lappend(server->options, makeDefElem(pstrdup("host"), (Node *)list_nth(host_list, index), -1));
 
-	if(port)
+	if (port)
 		port->arg = (Node *) list_nth(port_list, index);
 	else
 		server->options = lappend(server->options, makeDefElem(pstrdup("port"), (Node *)list_nth(port_list, index), -1));
@@ -1521,9 +1522,9 @@ postgresBeginForeignScan(ForeignScanState *node, int eflags)
 	 * Get connection to the foreign server.  Connection manager will
 	 * establish new connection if necessary.
 	 */
-	if(table->exec_location == FTEXECLOCATION_MULTI_SERVERS)
+	if (table->exec_location == FTEXECLOCATION_MULTI_SERVERS)
 	{
-		if(Gp_role == GP_ROLE_EXECUTE)
+		if (Gp_role == GP_ROLE_EXECUTE)
 		{
 			int index = get_hostinfo_index(estate);
 			rewrite_server_options(server, index);
@@ -2210,16 +2211,16 @@ postgresIsForeignRelUpdatable(Relation rel)
 	 */
 	bool isGreenplum = false;
 	UserMapping *user = GetUserMapping(rel->rd_rel->relowner, table->serverid);
-	if(table->exec_location == FTEXECLOCATION_MULTI_SERVERS)
+	if (table->exec_location == FTEXECLOCATION_MULTI_SERVERS)
 	{
 		int index;
-		for(index = 0; index < server->num_segments; ++index)
+		for (index = 0; index < server->num_segments; ++index)
 		{
 			rewrite_server_options(server, index);
-			if(greenplumCheckIsGreenplum(server, user))
+			if (greenplumCheckIsGreenplum(server, user))
 				break;
 		}
-		if(index != server->num_segments)
+		if (index != server->num_segments)
 			isGreenplum = true;
 	}
 	else
@@ -2509,9 +2510,9 @@ postgresBeginDirectModify(ForeignScanState *node, int eflags)
 	 * Get connection to the foreign server.  Connection manager will
 	 * establish new connection if necessary.
 	 */
-	if(table->exec_location == FTEXECLOCATION_MULTI_SERVERS)
+	if (table->exec_location == FTEXECLOCATION_MULTI_SERVERS)
 	{
-		if(Gp_role == GP_ROLE_EXECUTE)
+		if (Gp_role == GP_ROLE_EXECUTE)
 		{
 			int index = get_hostinfo_index(estate);
 			rewrite_server_options(server, index);
@@ -2822,14 +2823,14 @@ estimate_path_cost_size(PlannerInfo *root,
 		/* Get the remote estimate */
 		ForeignServer *server = GetForeignServer(fpinfo->user->serverid);
 
-		if(foreignrel->exec_location == FTEXECLOCATION_MULTI_SERVERS)
+		if (foreignrel->exec_location == FTEXECLOCATION_MULTI_SERVERS)
 		{
 			double		tmp_rows = 0;
 			int			tmp_width = 0;
 			Cost		tmp_startup_cost = 0;
 			Cost		tmp_total_cost = 0;
 
-			for(int index = 0; index < server->num_segments; ++index)
+			for (int index = 0; index < server->num_segments; ++index)
 			{
 				rewrite_server_options(server, index);
 				conn = GetConnection(server, fpinfo->user, false);
@@ -3684,9 +3685,9 @@ create_foreign_modify(EState *estate,
 	user = GetUserMapping(userid, table->serverid);
 
 	/* Open connection; report that we'll create a prepared statement. */
-	if(table->exec_location == FTEXECLOCATION_MULTI_SERVERS)
+	if (table->exec_location == FTEXECLOCATION_MULTI_SERVERS)
 	{
-		if(Gp_role == GP_ROLE_EXECUTE)
+		if (Gp_role == GP_ROLE_EXECUTE)
 		{
 			int index = get_hostinfo_index(estate);
 			rewrite_server_options(server, index);
@@ -4580,7 +4581,7 @@ postgresAnalyzeForeignTable(Relation relation,
 	 */
 	table = GetForeignTable(RelationGetRelid(relation));
 
-	if(table->exec_location == FTEXECLOCATION_MULTI_SERVERS)
+	if (table->exec_location == FTEXECLOCATION_MULTI_SERVERS)
 	{
 		postgresAnalyzeForeignTableForMultiServer(relation, func, totalpages);
 		return true;
@@ -4835,7 +4836,7 @@ postgresAnalyzeForeignTableForMultiServer(Relation relation,
 	deparseAnalyzeSizeSql(&sql, relation);
 
 	*totalpages = 0;
-	for(int index = 0; index < server->num_segments; ++index)
+	for (int index = 0; index < server->num_segments; ++index)
 	{
 		rewrite_server_options(server, index);
 		conn = GetConnection(server, user, false);
@@ -4915,7 +4916,7 @@ postgresAcquireSampleRowsFuncForMultiServer(Relation relation, int elevel,
 	server = GetForeignServer(table->serverid);
 	user = GetUserMapping(relation->rd_rel->relowner, table->serverid);
 
-	for(int index = 0; index < server->num_segments; ++index)
+	for (int index = 0; index < server->num_segments; ++index)
 	{
 		rewrite_server_options(server, index);
 		conn = GetConnection(server, user, false);

@@ -159,7 +159,7 @@ GetConnection(ForeignServer *server, UserMapping *user, bool will_prep_stmt)
 			char *host = defGetString(d);
 			strncpy(key.hostname, host, MAXHOSTNAMELEN);
 		}
-		else if(strcmp(d->defname, "port") == 0)
+		else if (strcmp(d->defname, "port") == 0)
 			key.port = atoi(defGetString(d));
 	}
 
