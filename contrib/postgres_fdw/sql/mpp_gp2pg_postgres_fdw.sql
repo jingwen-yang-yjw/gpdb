@@ -1,4 +1,4 @@
--- This file is used to test mpp pusdown.
+-- This file is used to test the feature that there are multiple remote postgres servers.
 
 -- ===================================================================
 -- create FDW objects
@@ -35,12 +35,7 @@ CREATE USER MAPPING FOR CURRENT_USER SERVER pgserver;
 -- ===================================================================
 CREATE FOREIGN TABLE mpp_ft1 (
 	c1 int,
-	c2 int,
-	c3 smallint,
-	c4 bigint,
-	c5 real,
-	c6 double precision,
-	c7 numeric
+	c2 int
 ) SERVER pgserver OPTIONS (schema_name 'MPP_S 1', table_name 'T 1');
 
 -- ===================================================================
@@ -66,9 +61,12 @@ CREATE FOREIGN TABLE mpp_test (
 -- ===================================================================
 -- Simple queries
 -- ===================================================================
-EXPLAIN VERBOSE SELECT * FROM mpp_ft1;
+EXPLAIN VERBOSE SELECT * FROM mpp_ft1 ORDER BY c1;
+SELECT * FROM mpp_ft1 ORDER BY c1;
+
 ALTER FOREIGN TABLE mpp_ft1 OPTIONS (add use_remote_estimate 'true');
-EXPLAIN VERBOSE SELECT * FROM mpp_ft1;
+EXPLAIN VERBOSE SELECT * FROM mpp_ft1 ORDER BY c1;
+SELECT * FROM mpp_ft1 ORDER BY c1;
 ALTER FOREIGN TABLE mpp_ft1 OPTIONS (drop use_remote_estimate);
 
 -- ===================================================================
