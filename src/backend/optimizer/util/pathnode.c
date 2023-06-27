@@ -3338,6 +3338,22 @@ path_contains_inner_index(Path *path)
 	return false;
 }
 
+/* Set locus for foreign path node */
+static void
+get_cdbpathlocus_for_foreign_relation(struct PlannerInfo   *root,
+                          struct RelOptInfo    *rel,
+						  ForeignPath *pathnode)
+{
+	if (rel->exec_location == FTEXECLOCATION_ANY)
+	{
+		CdbPathLocus_MakeGeneral(&(pathnode->path.locus));
+	}
+	else
+	{
+		pathnode->path.locus = cdbpathlocus_from_baserel(root, rel);
+	}
+	return;
+}
 /*
  * create_foreignscan_path
  *	  Creates a path corresponding to a scan of a foreign base table,
@@ -3375,7 +3391,7 @@ create_foreignscan_path(PlannerInfo *root, RelOptInfo *rel,
 	pathnode->path.startup_cost = startup_cost;
 	pathnode->path.total_cost = total_cost;
 	pathnode->path.pathkeys = pathkeys;
-	pathnode->path.locus = cdbpathlocus_from_baserel(root, rel);
+	get_cdbpathlocus_for_foreign_relation(root, rel, pathnode);
 	pathnode->fdw_outerpath = fdw_outerpath;
 	pathnode->fdw_private = fdw_private;
 
@@ -3425,7 +3441,7 @@ create_foreign_join_path(PlannerInfo *root, RelOptInfo *rel,
 	pathnode->path.startup_cost = startup_cost;
 	pathnode->path.total_cost = total_cost;
 	pathnode->path.pathkeys = pathkeys;
-	pathnode->path.locus = cdbpathlocus_from_baserel(root, rel);
+	get_cdbpathlocus_for_foreign_relation(root, rel, pathnode);
 	pathnode->fdw_outerpath = fdw_outerpath;
 	pathnode->fdw_private = fdw_private;
 
@@ -3469,7 +3485,7 @@ create_foreign_upper_path(PlannerInfo *root, RelOptInfo *rel,
 	pathnode->path.startup_cost = startup_cost;
 	pathnode->path.total_cost = total_cost;
 	pathnode->path.pathkeys = pathkeys;
-	pathnode->path.locus = cdbpathlocus_from_baserel(root, rel);
+	get_cdbpathlocus_for_foreign_relation(root, rel, pathnode);
 	pathnode->fdw_outerpath = fdw_outerpath;
 	pathnode->fdw_private = fdw_private;
 

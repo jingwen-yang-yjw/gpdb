@@ -1250,3 +1250,44 @@ select * from part_mixed_dpe, non_part where part_mixed_dpe.b=non_part.b;
  9 | 9 | 9 | 9
 (2 rows)
 
+-- compare difference plans among when mpp_execute set to 'all segments', 'coordinator' and 'any'
+explain (costs false) update t1 set b = b + 1 where b in (select a from gp_all where gp_all.a > 10);
+                          QUERY PLAN                           
+---------------------------------------------------------------
+ Update on t1
+   ->  Hash Semi Join
+         Hash Cond: (t1.b = gp_all.a)
+         ->  Seq Scan on t1
+               Filter: (b > 10)
+         ->  Hash
+               ->  Broadcast Motion 3:3  (slice1; segments: 3)
+                     ->  Foreign Scan on gp_all
+ Optimizer: Postgres query optimizer
+(9 rows)
+
+explain (costs false) update t1 set b = b + 1 where b in (select a from gp_any where gp_any.a > 10);
+                QUERY PLAN                
+------------------------------------------
+ Update on t1
+   ->  Hash Semi Join
+         Hash Cond: (t1.b = gp_any.a)
+         ->  Seq Scan on t1
+               Filter: (b > 10)
+         ->  Hash
+               ->  Foreign Scan on gp_any
+ Optimizer: Postgres query optimizer
+(8 rows)
+
+explain (costs false) update t1 set b = b + 1 where b in (select a from gp_coord where gp_coord.a > 10);
+                    QUERY PLAN                    
+--------------------------------------------------
+ Update on t1
+   ->  Hash Semi Join
+         Hash Cond: (t1.b = gp_coord.a)
+         ->  Seq Scan on t1
+               Filter: (b > 10)
+         ->  Hash
+               ->  Broadcast Motion 1:3  (slice1)
+                     ->  Foreign Scan on gp_coord
+ Optimizer: Postgres query optimizer
+(9 rows)

@@ -1279,3 +1279,71 @@ select * from part_mixed_dpe, non_part where part_mixed_dpe.b=non_part.b;
  9 | 9 | 9 | 9
 (2 rows)
 
+-- compare difference plans among when mpp_execute set to 'all segments', 'coordinator' and 'any'
+explain (costs false) update t1 set b = b + 1 where b in (select a from gp_all where gp_all.a > 10);
+                          QUERY PLAN                           
+---------------------------------------------------------------
+ Update on t1
+   ->  Hash Semi Join
+         Hash Cond: (t1.b = a)
+         ->  Seq Scan on t1
+         ->  Hash
+               ->  Broadcast Motion 3:3  (slice1; segments: 3)
+                     ->  Foreign Scan on gp_all
+ Optimizer: Pivotal Optimizer (GPORCA)
+(8 rows)
+
+explain (costs false) update t1 set b = b + 1 where b in (select a from gp_any where gp_any.a > 10);
+                                     QUERY PLAN                                     
+------------------------------------------------------------------------------------
+ Update on t1
+   ->  Result
+         ->  Redistribute Motion 3:3  (slice1; segments: 3)
+               Hash Key: t1.a
+               ->  Hash Join
+                     Hash Cond: (t1.b = a)
+                     ->  Redistribute Motion 3:3  (slice2; segments: 3)
+                           Hash Key: t1.b
+                           ->  Seq Scan on t1
+                     ->  Hash
+                           ->  GroupAggregate
+                                 Group Key: a
+                                 ->  Sort
+                                       Sort Key: a
+                                       ->  Result
+                                             ->  GroupAggregate
+                                                   Group Key: a
+                                                   ->  Sort
+                                                         Sort Key: a
+                                                         ->  Foreign Scan on gp_any
+ Optimizer: Pivotal Optimizer (GPORCA)
+(21 rows)
+
+explain (costs false) update t1 set b = b + 1 where b in (select a from gp_coord where gp_coord.a > 10);
+                                          QUERY PLAN                                           
+-----------------------------------------------------------------------------------------------
+ Update on t1
+   ->  Result
+         ->  Redistribute Motion 3:3  (slice1; segments: 3)
+               Hash Key: t1.a
+               ->  Hash Join
+                     Hash Cond: (t1.b = a)
+                     ->  Redistribute Motion 3:3  (slice2; segments: 3)
+                           Hash Key: t1.b
+                           ->  Seq Scan on t1
+                     ->  Hash
+                           ->  GroupAggregate
+                                 Group Key: a
+                                 ->  Sort
+                                       Sort Key: a
+                                       ->  Redistribute Motion 3:3  (slice3; segments: 3)
+                                             Hash Key: a
+                                             ->  GroupAggregate
+                                                   Group Key: a
+                                                   ->  Sort
+                                                         Sort Key: a
+                                                         ->  Redistribute Motion 1:3  (slice4)
+                                                               ->  Foreign Scan on gp_coord
+ Optimizer: Pivotal Optimizer (GPORCA)
+(23 rows)
+

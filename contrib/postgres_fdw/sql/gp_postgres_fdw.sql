@@ -306,3 +306,8 @@ insert into part_mixed_dpe select 6,6 from generate_series(1,10);
 analyze part_mixed_dpe;
 explain select * from part_mixed_dpe, non_part where part_mixed_dpe.b=non_part.b;
 select * from part_mixed_dpe, non_part where part_mixed_dpe.b=non_part.b;
+
+-- compare difference plans among when mpp_execute set to 'all segments', 'coordinator' and 'any'
+explain (costs false) update t1 set b = b + 1 where b in (select a from gp_all where gp_all.a > 10);
+explain (costs false) update t1 set b = b + 1 where b in (select a from gp_any where gp_any.a > 10);
+explain (costs false) update t1 set b = b + 1 where b in (select a from gp_coord where gp_coord.a > 10);

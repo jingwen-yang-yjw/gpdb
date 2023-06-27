@@ -396,7 +396,7 @@ GpPolicyFetch(Oid tbloid)
 				 * option is set to 'all segments'
 				 */
 				if (server)
-					return createRandomPartitionedPolicy (server->num_segments);
+					return createRandomPartitionedPolicy(server->num_segments);
 				else
 					return createRandomPartitionedPolicy(getgpsegmentCount());
 			}
