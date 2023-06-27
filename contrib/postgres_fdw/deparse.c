@@ -3129,7 +3129,8 @@ deparsePartialAggFunctionParamFilter(Aggref *node, deparse_expr_cxt *context,
 {
 	StringInfo buf = context->buf;
 
-	switch (node->aggfnoid) {
+	switch (node->aggfnoid)
+	{
 		case 2100:
 			/* int8 AVG */
 			/* Fall through */	

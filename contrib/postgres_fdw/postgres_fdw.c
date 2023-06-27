@@ -6267,9 +6267,8 @@ postgresGetForeignUpperPaths(PlannerInfo *root, UpperRelationKind stage,
 	{
 		case UPPERREL_CDB_FIRST_STAGE_GROUP_AGG:
 			/* It's unsafe to push having statements with partial aggregates */
-			if(((GroupPathExtraData *) extra)->havingQual) {
+			if (((GroupPathExtraData *) extra)->havingQual)
 				return;
-			}
 			/* Fall through */
 			/* Partial agg push down path */
 		case UPPERREL_GROUP_AGG:
@@ -6762,7 +6761,7 @@ static void get_retrieved_partial_aggfnoids(ForeignScanState *fsstate,
 	{
 		/* ForeignScan case */
 		ForeignScan *fsplan = (ForeignScan*)fsstate->ss.ps.plan;
-		if(!fsplan->fdw_scan_tlist)
+		if (!fsplan->fdw_scan_tlist)
 		{
 			foreach(lc1, retrieved_attrs)
 				*retrieved_aggfnoids = lappend_oid(*retrieved_aggfnoids, InvalidOid);
