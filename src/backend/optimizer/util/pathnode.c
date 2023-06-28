@@ -3455,7 +3455,15 @@ create_foreign_join_path(PlannerInfo *root, RelOptInfo *rel,
 	pathnode->path.startup_cost = startup_cost;
 	pathnode->path.total_cost = total_cost;
 	pathnode->path.pathkeys = pathkeys;
-	get_cdbpathlocus_for_foreign_relation(root, rel, pathnode);
+	if (Gp_role == GP_ROLE_DISPATCH)
+	{
+		get_cdbpathlocus_for_foreign_relation(root, rel, pathnode);
+	}
+	else
+	{
+		/* make entry locus for utility role */
+		CdbPathLocus_MakeEntry(&(pathnode->path.locus));
+	}
 	pathnode->fdw_outerpath = fdw_outerpath;
 	pathnode->fdw_private = fdw_private;
 
@@ -3499,7 +3507,15 @@ create_foreign_upper_path(PlannerInfo *root, RelOptInfo *rel,
 	pathnode->path.startup_cost = startup_cost;
 	pathnode->path.total_cost = total_cost;
 	pathnode->path.pathkeys = pathkeys;
-	get_cdbpathlocus_for_foreign_relation(root, rel, pathnode);
+	if (Gp_role == GP_ROLE_DISPATCH)
+	{
+		get_cdbpathlocus_for_foreign_relation(root, rel, pathnode);
+	}
+	else
+	{
+		/* make entry locus for utility role */
+		CdbPathLocus_MakeEntry(&(pathnode->path.locus));
+	}
 	pathnode->fdw_outerpath = fdw_outerpath;
 	pathnode->fdw_private = fdw_private;
 
