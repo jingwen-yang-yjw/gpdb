@@ -3344,13 +3344,19 @@ get_cdbpathlocus_for_foreign_relation(struct PlannerInfo   *root,
                           struct RelOptInfo    *rel,
 						  ForeignPath *pathnode)
 {
-	if (rel->exec_location == FTEXECLOCATION_ANY)
+	switch (rel->exec_location)
 	{
-		CdbPathLocus_MakeGeneral(&(pathnode->path.locus));
-	}
-	else
-	{
-		pathnode->path.locus = cdbpathlocus_from_baserel(root, rel);
+		case FTEXECLOCATION_ANY:
+			CdbPathLocus_MakeGeneral(&(pathnode->path.locus));
+			break;
+		case FTEXECLOCATION_ALL_SEGMENTS:
+			pathnode->path.locus = cdbpathlocus_from_baserel(root, rel);
+			break;
+		case FTEXECLOCATION_COORDINATOR:
+			CdbPathLocus_MakeEntry(&(pathnode->path.locus));
+			break;
+		default:
+			elog(ERROR, "unrecognized exec_location '%c'", rel->exec_location);
 	}
 	return;
 }
