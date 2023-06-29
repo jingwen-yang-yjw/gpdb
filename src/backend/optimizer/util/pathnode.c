@@ -3340,7 +3340,7 @@ path_contains_inner_index(Path *path)
 
 /* Set locus for foreign path node */
 static void
-get_cdbpathlocus_for_foreign_relation(struct PlannerInfo   *root,
+make_cdbpathlocus_for_foreign_relations(struct PlannerInfo   *root,
                           struct RelOptInfo    *rel,
 						  ForeignPath *pathnode)
 {
@@ -3360,6 +3360,7 @@ get_cdbpathlocus_for_foreign_relation(struct PlannerInfo   *root,
 	}
 	return;
 }
+
 /*
  * create_foreignscan_path
  *	  Creates a path corresponding to a scan of a foreign base table,
@@ -3399,7 +3400,7 @@ create_foreignscan_path(PlannerInfo *root, RelOptInfo *rel,
 	pathnode->path.pathkeys = pathkeys;
 	if (Gp_role == GP_ROLE_DISPATCH)
 	{
-		get_cdbpathlocus_for_foreign_relation(root, rel, pathnode);
+		make_cdbpathlocus_for_foreign_relations(root, rel, pathnode);
 	}
 	else
 	{
@@ -3457,7 +3458,7 @@ create_foreign_join_path(PlannerInfo *root, RelOptInfo *rel,
 	pathnode->path.pathkeys = pathkeys;
 	if (Gp_role == GP_ROLE_DISPATCH)
 	{
-		get_cdbpathlocus_for_foreign_relation(root, rel, pathnode);
+		make_cdbpathlocus_for_foreign_relations(root, rel, pathnode);
 	}
 	else
 	{
@@ -3509,7 +3510,7 @@ create_foreign_upper_path(PlannerInfo *root, RelOptInfo *rel,
 	pathnode->path.pathkeys = pathkeys;
 	if (Gp_role == GP_ROLE_DISPATCH)
 	{
-		get_cdbpathlocus_for_foreign_relation(root, rel, pathnode);
+		make_cdbpathlocus_for_foreign_relations(root, rel, pathnode);
 	}
 	else
 	{
