@@ -168,3 +168,93 @@ select count(*) from test_count;
 
 alter server pgserver options(set num_segments '2', set multi_hosts 'localhost localhost', set multi_ports '5432 5555');
 \c
+-- =====================================================================================
+-- Test DISTRIBUTED BY clause for postgres_fdw foreign table
+-- =====================================================================================
+\! env PGOPTIONS='' psql -p 5432 contrib_regression -c 'truncate "MPP_S 1"."T 1"'
+TRUNCATE TABLE
+\! env PGOPTIONS='' psql -p 5555 contrib_regression -c 'truncate "MPP_S 1"."T 1"'
+TRUNCATE TABLE
+CREATE FOREIGN TABLE mpp_dist_1 (
+	c1 int,
+	c2 int
+) SERVER pgserver OPTIONS (mpp_execute 'all segments', schema_name 'MPP_S 1', table_name 'T 1') DISTRIBUTED BY (c1);
+ERROR:  Only if mpp_execute = 'multi servers', foreign table support DISTRIBUTED BY clause.  (seg1 127.0.0.1:7003 pid=25801)
+CREATE FOREIGN TABLE mpp_dist (
+	c1 int,
+	c2 int
+) SERVER pgserver OPTIONS (schema_name 'MPP_S 1', table_name 'T 1') DISTRIBUTED BY (c1);
+INSERT INTO mpp_dist SELECT id, id % 5 FROM generate_series(1, 20) as id;
+SELECT * FROM mpp_dist ORDER BY c1;
+ c1 | c2 
+----+----
+  1 |  1
+  2 |  2
+  3 |  3
+  4 |  4
+  5 |  0
+  6 |  1
+  7 |  2
+  8 |  3
+  9 |  4
+ 10 |  0
+ 11 |  1
+ 12 |  2
+ 13 |  3
+ 14 |  4
+ 15 |  0
+ 16 |  1
+ 17 |  2
+ 18 |  3
+ 19 |  4
+ 20 |  0
+(20 rows)
+
+EXPLAIN VERBOSE SELECT * FROM mpp_dist t1 JOIN mpp_dist t2 ON t1.c1 = t2.c1 ORDER BY t1.c1;
+                                              QUERY PLAN                                               
+-------------------------------------------------------------------------------------------------------
+ Gather Motion 2:1  (slice1; segments: 2)  (cost=1394001.30..1514465.96 rows=7413210 width=20)
+   Output: t1.c1, t1.c2, t2.c1, t2.c2, t1.c1
+   Merge Key: t1.c1
+   ->  Sort  (cost=1394001.30..1403267.81 rows=3706605 width=20)
+         Output: t1.c1, t1.c2, t2.c1, t2.c2, t1.c1
+         Sort Key: t1.c1
+         ->  Hash Join  (cost=3959.25..970574.80 rows=3706605 width=20)
+               Output: t1.c1, t1.c2, t2.c1, t2.c2, t1.c1
+               Hash Cond: (t1.c1 = t2.c1)
+               ->  Foreign Scan on public.mpp_dist t1  (cost=100.00..2783.00 rows=86100 width=8)
+                     Output: t1.c1, t1.c2
+                     Remote SQL: SELECT c1, c2 FROM "MPP_S 1"."T 1"
+               ->  Hash  (cost=2783.00..2783.00 rows=86100 width=8)
+                     Output: t2.c1, t2.c2
+                     ->  Foreign Scan on public.mpp_dist t2  (cost=100.00..2783.00 rows=86100 width=8)
+                           Output: t2.c1, t2.c2
+                           Remote SQL: SELECT c1, c2 FROM "MPP_S 1"."T 1"
+ Optimizer: Postgres query optimizer
+(18 rows)
+
+SELECT * FROM mpp_dist t1 JOIN mpp_dist t2 ON t1.c1 = t2.c1 ORDER BY t1.c1;
+ c1 | c2 | c1 | c2 
+----+----+----+----
+  1 |  1 |  1 |  1
+  2 |  2 |  2 |  2
+  3 |  3 |  3 |  3
+  4 |  4 |  4 |  4
+  5 |  0 |  5 |  0
+  6 |  1 |  6 |  1
+  7 |  2 |  7 |  2
+  8 |  3 |  8 |  3
+  9 |  4 |  9 |  4
+ 10 |  0 | 10 |  0
+ 11 |  1 | 11 |  1
+ 12 |  2 | 12 |  2
+ 13 |  3 | 13 |  3
+ 14 |  4 | 14 |  4
+ 15 |  0 | 15 |  0
+ 16 |  1 | 16 |  1
+ 17 |  2 | 17 |  2
+ 18 |  3 | 18 |  3
+ 19 |  4 | 19 |  4
+ 20 |  0 | 20 |  0
+(20 rows)
+

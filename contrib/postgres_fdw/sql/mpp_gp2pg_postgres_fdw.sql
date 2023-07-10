@@ -99,3 +99,24 @@ select count(*) from test_count;
 alter server pgserver options(set num_segments '2', set multi_hosts 'localhost localhost', set multi_ports '5432 5555');
 \c
 
+-- =====================================================================================
+-- Test DISTRIBUTED BY clause for postgres_fdw foreign table
+-- =====================================================================================
+\! env PGOPTIONS='' psql -p 5432 contrib_regression -c 'truncate "MPP_S 1"."T 1"'
+\! env PGOPTIONS='' psql -p 5555 contrib_regression -c 'truncate "MPP_S 1"."T 1"'
+
+CREATE FOREIGN TABLE mpp_dist_1 (
+	c1 int,
+	c2 int
+) SERVER pgserver OPTIONS (mpp_execute 'all segments', schema_name 'MPP_S 1', table_name 'T 1') DISTRIBUTED BY (c1);
+
+CREATE FOREIGN TABLE mpp_dist (
+	c1 int,
+	c2 int
+) SERVER pgserver OPTIONS (schema_name 'MPP_S 1', table_name 'T 1') DISTRIBUTED BY (c1);
+
+INSERT INTO mpp_dist SELECT id, id % 5 FROM generate_series(1, 20) as id;
+SELECT * FROM mpp_dist ORDER BY c1;
+
+EXPLAIN VERBOSE SELECT * FROM mpp_dist t1 JOIN mpp_dist t2 ON t1.c1 = t2.c1 ORDER BY t1.c1;
+SELECT * FROM mpp_dist t1 JOIN mpp_dist t2 ON t1.c1 = t2.c1 ORDER BY t1.c1;
