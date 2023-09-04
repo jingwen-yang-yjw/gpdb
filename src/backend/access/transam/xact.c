@@ -88,7 +88,7 @@
 #include "cdb/cdbgang.h"
 #include "cdb/cdblocaldistribxact.h"
 #include "cdb/cdbtm.h"
-#include "cdb/cdbvars.h" /* Gp_role, Gp_is_writer, interconnect_setup_timeout */
+#include "cdb/cdbvars.h" /* Gp_role, Gp_is_writer, Gp_is_first_writer, interconnect_setup_timeout */
 #include "utils/workfile_mgr.h"
 #include "utils/vmem_tracker.h"
 #include "cdb/cdbdisp.h"

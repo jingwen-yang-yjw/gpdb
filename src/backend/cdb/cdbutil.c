@@ -782,6 +782,7 @@ cdbcomponent_allocateIdleQE(int contentId, SegmentType segmentType)
 	ListCell					*prevItem = NULL;
 	MemoryContext 				oldContext;
 	bool						isWriter;
+	bool						isFirstWriter;
 
 	cdbinfo = cdbcomponent_getComponentInfo(contentId);	
 
@@ -831,8 +832,10 @@ cdbcomponent_allocateIdleQE(int contentId, SegmentType segmentType)
 		 * other kind tables.
 		 *
 		 */
-		isWriter = contentId == -1 ? false: (cdbinfo->numIdleQEs == 0 && cdbinfo->numActiveQEs == 0);
-		segdbDesc = cdbconn_createSegmentDescriptor(cdbinfo, nextQEIdentifer(cdbinfo->cdbs), isWriter);
+		isWriter = contentId == -1 ? false :
+			((cdbinfo->numIdleQEs == 0 && cdbinfo->numActiveQEs == 0) || segmentType == SEGMENTTYPE_EXPLICT_WRITER);
+		isFirstWriter = contentId == -1 ? false : (cdbinfo->numIdleQEs == 0 && cdbinfo->numActiveQEs == 0);
+		segdbDesc = cdbconn_createSegmentDescriptor(cdbinfo, nextQEIdentifer(cdbinfo->cdbs), isWriter, isFirstWriter);
 	}
 
 	cdbconn_setQEIdentifier(segdbDesc, -1);
