@@ -15,11 +15,11 @@ CREATE SERVER pgserver FOREIGN DATA WRAPPER postgres_fdw
            dbname 'contrib_regression', multi_hosts 'localhost  localhost',
            multi_ports '5432  5555', num_segments '2', mpp_execute 'all segments');
 -- pgserver1 is used to test distributed transaction.
--- In case of build 4 remote postgres servers, we write to a table three times.
+-- In case of build 4 remote postgres servers, we write to a table three times, but with different data.
 CREATE SERVER pgserver1 FOREIGN DATA WRAPPER postgres_fdw
   OPTIONS (host 'dummy', port '0',
            dbname 'contrib_regression', multi_hosts 'localhost  localhost localhost localhost',
-           multi_ports '5432 5432 5432 5555', num_segments '4', mpp_execute 'all segments');
+           multi_ports '5432 5555 5432 5432', num_segments '4', mpp_execute 'all segments');
 CREATE USER MAPPING FOR CURRENT_USER SERVER pgserver;
 CREATE USER MAPPING FOR CURRENT_USER SERVER pgserver1;
 -- ===================================================================
