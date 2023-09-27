@@ -898,12 +898,14 @@ cdbcomponent_recycleIdleQE(SegmentDatabaseDescriptor *segdbDesc, bool forceDestr
 	MemoryContext				oldContext;	
 	int							maxLen;
 	bool						isWriter;
+	bool						isFirstWriter;
 
 	Assert(cdb_component_dbs);
 	Assert(CdbComponentsContext);
 
 	cdbinfo = segdbDesc->segment_database_info;
 	isWriter = segdbDesc->isWriter;
+	isFirstWriter = segdbDesc->isFirstWriter;
 
 	/* update num of active QEs */
 	Assert(list_member_ptr(cdbinfo->activelist, segdbDesc));
@@ -924,9 +926,27 @@ cdbcomponent_recycleIdleQE(SegmentDatabaseDescriptor *segdbDesc, bool forceDestr
 	/* Recycle the QE, put it to freelist */
 	if (isWriter)
 	{
-		/* writer is always the header of freelist */
-		segdbDesc->segment_database_info->freelist =
-			lcons(segdbDesc, segdbDesc->segment_database_info->freelist);
+		if (isFirstWriter)
+		{
+			/* the first writer in a segment for the same session is always the header of freelist */
+			segdbDesc->segment_database_info->freelist =
+				lcons(segdbDesc, segdbDesc->segment_database_info->freelist);
+		}
+		else
+		{
+			/* the extra writers must be placed after the first writer in a segment for the same session */
+			ListCell	*cell = list_head(segdbDesc->segment_database_info->freelist);
+			if (cell && ((SegmentDatabaseDescriptor *) lfirst(cell))->isFirstWriter)
+			{
+				lappend_cell(segdbDesc->segment_database_info->freelist,
+							 cell, segdbDesc);
+			}
+			else
+			{
+				segdbDesc->segment_database_info->freelist =
+					lcons(segdbDesc, segdbDesc->segment_database_info->freelist);
+			}
+		}
 	}
 	else
 	{
