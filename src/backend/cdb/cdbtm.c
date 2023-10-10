@@ -2394,6 +2394,7 @@ addToGxactDtxSegments(Gang *gang)
 			continue;
 
 		/* skip if record already */
+		/* only need to dispatch dtx protocol command to writer QEs in a distributed transaction */
 		if (bms_is_member(qe_identifier, MyTmGxactLocal->dtxSegmentsMap) || !segdbDesc->isWriter)
 			continue;
 

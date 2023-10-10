@@ -1290,7 +1290,7 @@ InitPostgres(const char *in_dbname, Oid dboid, const char *username,
     }
     else if (Gp_role == GP_ROLE_EXECUTE)
 	{
-		if (Gp_is_writer && Gp_is_first_writer)
+		if (Gp_is_first_writer)
 		{
 			addSharedSnapshot("Writer qExec", gp_session_id);
 		}
