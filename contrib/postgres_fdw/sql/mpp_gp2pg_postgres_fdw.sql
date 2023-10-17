@@ -257,3 +257,13 @@ select count(*) from mpp_ft3;
 insert into mpp_ft3 select i,i from generate_series(1,100) i;
 \! env PGOPTIONS='' psql -p 5555 contrib_regression -c 'alter table "MPP_S 1"."T 1" add column c2 int'
 select count(*) from mpp_ft3;
+
+-- ===================================================================
+-- Test INSERT/UPDATE/DELETE
+-- ===================================================================
+DELETE FROM mpp_ft1;
+SELECT * FROM mpp_ft1 ORDER BY c1;
+INSERT INTO mpp_ft1 VALUES (0, 0), (1, 1), (2, 2), (3, 3), (4, 4), (5, 5);
+SELECT * FROM mpp_ft1 ORDER BY c1;
+UPDATE mpp_ft1 SET c1 = c1 * 10;
+SELECT * FROM mpp_ft1 ORDER BY c1;
