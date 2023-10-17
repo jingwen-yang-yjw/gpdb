@@ -965,17 +965,6 @@ struct config_bool ConfigureNamesBool_gp[] =
 	},
 
 	{
-		{"gp_is_first_writer", PGC_BACKEND, GP_WORKER_IDENTITY,
-			gettext_noop("True in a worker process which is the first writer in a segment for a session"),
-			NULL,
-			GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE | GUC_DISALLOW_IN_FILE
-		},
-		&Gp_is_first_writer,
-		false,
-		NULL, NULL, NULL
-	},
-
-	{
 		{"gp_write_shared_snapshot", PGC_USERSET, UNGROUPED,
 			gettext_noop("Forces the writer gang to set the shared snapshot."),
 			NULL,

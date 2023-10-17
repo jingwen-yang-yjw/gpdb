@@ -1087,3 +1087,17 @@ SELECT * FROM mpp_ft1 ORDER BY c1;
  50 |  5
 (6 rows)
 
+UPDATE mpp_ft1 SET c1 = c1 / (c1 - 10);
+ERROR:  division by zero  (seg1 127.0.0.1:7003 pid=19924)
+CONTEXT:  remote SQL command: UPDATE "MPP_S 1"."T 1" SET c1 = (c1 / (c1 - 10))
+SELECT * FROM mpp_ft1 ORDER BY c1;
+ c1 | c2 
+----+----
+  0 |  0
+ 10 |  1
+ 20 |  2
+ 30 |  3
+ 40 |  4
+ 50 |  5
+(6 rows)
+

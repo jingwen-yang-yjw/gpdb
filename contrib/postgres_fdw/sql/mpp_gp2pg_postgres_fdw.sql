@@ -267,3 +267,5 @@ INSERT INTO mpp_ft1 VALUES (0, 0), (1, 1), (2, 2), (3, 3), (4, 4), (5, 5);
 SELECT * FROM mpp_ft1 ORDER BY c1;
 UPDATE mpp_ft1 SET c1 = c1 * 10;
 SELECT * FROM mpp_ft1 ORDER BY c1;
+UPDATE mpp_ft1 SET c1 = c1 / (c1 - 10);
+SELECT * FROM mpp_ft1 ORDER BY c1;

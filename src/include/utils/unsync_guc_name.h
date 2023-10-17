@@ -190,7 +190,6 @@
 		"gp_heap_require_relhasoids_match",
 		"gp_instrument_shmem_size",
 		"gp_is_writer",
-		"gp_is_first_writer",
 		"gp_local_distributed_cache_stats",
 		"gp_log_dynamic_partition_pruning",
 		"gp_log_format",

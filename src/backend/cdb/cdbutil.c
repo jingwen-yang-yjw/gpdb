@@ -822,18 +822,14 @@ cdbcomponent_allocateIdleQE(int contentId, SegmentType segmentType)
 		/*
 		 * 1. for entrydb, it's never be writer.
 		 * 2. for first QE, it must be a writer.
+		 * 3. for QE in writer gang, it must be a writer.
 		 *
-		 * This block ignores the segmentType of the not-first QEs and
-		 * sets it as a reader, foreign tables have to workaround this
-		 * if we'd like to have more QEs writing the external data than
-		 * the segment count.
-		 *
-		 * This is too critical that we'd better not change the logic of
-		 * other kind tables.
-		 *
+		 * Note: Case 3 only arises when foreign tables need more QEs writing
+		 *       the external data than the number of segments in gpdb.
 		 */
 		isWriter = contentId == -1 ? false :
 			((cdbinfo->numIdleQEs == 0 && cdbinfo->numActiveQEs == 0) || segmentType == SEGMENTTYPE_EXPLICT_WRITER);
+		/* isFirstWriter identifies whether the writer QE is the first writer QE in the segment.  */
 		isFirstWriter = contentId == -1 ? false : (cdbinfo->numIdleQEs == 0 && cdbinfo->numActiveQEs == 0);
 		segdbDesc = cdbconn_createSegmentDescriptor(cdbinfo, nextQEIdentifer(cdbinfo->cdbs), isWriter, isFirstWriter);
 	}

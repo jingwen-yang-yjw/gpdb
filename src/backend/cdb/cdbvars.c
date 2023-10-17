@@ -54,7 +54,8 @@ char	   *gp_role_string;		/* Staging area for guc.c */
 
 bool		Gp_is_writer;		/* is this qExec a "writer" process. */
 
-bool		Gp_is_first_writer;	/* is this qExec the first "writer" process in the same segment. */
+bool		is_first_writer;	/* global variable to identify whether a "writer" process
+								 * is the first "writer" process in the same segment. */
 
 int			gp_session_id;		/* global unique id for session. */
 

@@ -527,9 +527,11 @@ cdbgang_parse_gpqeid_params(struct Port *port pg_attribute_unused(),
 	if (gpqeid_next_param(&cp, &np))
 		SetConfigOption("gp_is_writer", cp, PGC_POSTMASTER, PGC_S_OVERRIDE);
 
-	/* Gp_is_first_writer */
+	/* is_first_writer */
 	if (gpqeid_next_param(&cp, &np))
-		SetConfigOption("gp_is_first_writer", cp, PGC_POSTMASTER, PGC_S_OVERRIDE);
+	{
+		is_first_writer = (strcmp(cp, "true") == 0) ? true : false;
+	}
 
 	/* qe_identifier */
 	if (gpqeid_next_param(&cp, &np))
