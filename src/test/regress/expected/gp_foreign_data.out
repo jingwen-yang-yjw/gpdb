@@ -37,3 +37,32 @@ SELECT srvoptions FROM pg_foreign_server WHERE srvname = 's1';
  {num_segments=5}
 (1 row)
 
+-- Check compatibility between FOREIGN TABLE mpp_execute option and DISTRIBUTED BY clause
+CREATE FOREIGN TABLE ft1_hash_dist (
+	c1 int
+) SERVER s0 OPTIONS (delimiter ',', mpp_execute 'coordinator') DISTRIBUTED BY (c1);     -- ERROR
+ERROR:  Hash, random and replicated distribution must set option mpp_execute to "all segments"
+CREATE FOREIGN TABLE ft1_hash_dist (
+	c1 int
+) SERVER s0 OPTIONS (delimiter ',', mpp_execute 'all segments') DISTRIBUTED BY (c1);
+SELECT * FROM pg_catalog.pg_get_table_distributedby('ft1_hash_dist'::regclass);
+ pg_get_table_distributedby 
+------------
+ DISTRIBUTED BY (c1)
+(1 row)
+
+CREATE FOREIGN TABLE ft1_repl_dist (
+	c1 int
+) SERVER s0 OPTIONS (delimiter ',', mpp_execute 'coordinator') DISTRIBUTED REPLICATED;     -- ERROR
+ERROR:  Hash, random and replicated distribution must set option mpp_execute to "all segments"
+CREATE FOREIGN TABLE ft1_repl_dist (
+	c1 int
+) SERVER s0 OPTIONS (delimiter ',', mpp_execute 'all segments') DISTRIBUTED REPLICATED;
+SELECT * FROM pg_catalog.pg_get_table_distributedby('ft1_repl_dist'::regclass);
+ pg_get_table_distributedby 
+------------
+ DISTRIBUTED REPLICATED
+(1 row)
+
+ALTER FOREIGN TABLE ft1_repl_dist SET DISTRIBUTED BY (c1);
+ERROR:  Greenplum don't support to modify distributed key of distributed foreign table. (tablecmds.c:18066)
