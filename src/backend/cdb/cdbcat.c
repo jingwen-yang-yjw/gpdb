@@ -399,7 +399,7 @@ GpPolicyFetch(Oid tbloid)
 		 * of cluster and dispatcher cannot handle this.
 		 */
 		if ((Gp_role == GP_ROLE_DISPATCH || Gp_role == GP_ROLE_EXECUTE) &&
-			policyform->numsegments > getgpsegmentCount())
+			(policyform->numsegments > getgpsegmentCount() && get_rel_relkind(tbloid) != RELKIND_FOREIGN_TABLE))
 		{
 			ReleaseSysCache(gp_policy_tuple);
 			ereport(ERROR,
@@ -459,8 +459,7 @@ GpPolicyFetch(Oid tbloid)
 
 		ReleaseSysCache(gp_policy_tuple);
 	}
-
-	if (get_rel_relkind(tbloid) == RELKIND_FOREIGN_TABLE)
+	else if (get_rel_relkind(tbloid) == RELKIND_FOREIGN_TABLE)
 	{
 		/*
 		 * Similar to the external table creation, there is a transient state
@@ -481,17 +480,15 @@ GpPolicyFetch(Oid tbloid)
 				 * If foreign tables don't have a specific distribution
 				 * policy, we will create a random partitioned policy when
 				 * mpp_execute is set to 'all segments'.
-				 */
-				if(!policy)
-					policy = createRandomPartitionedPolicy(getgpsegmentCount());
-
-				/*
+				 *
 				 * If foreign server have option 'num_segments', we need to
-				 * adjust policy.
+				 * use it.
 				 */
 				ForeignServer *server = GetForeignServer(f->serverid);
 				if (server)
-					policy->numsegments = server->num_segments;
+					policy = createRandomPartitionedPolicy(server->num_segments);
+				else
+					policy = createRandomPartitionedPolicy(getgpsegmentCount());
 			}
 		}
 	}
