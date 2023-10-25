@@ -246,13 +246,23 @@ CREATE FOREIGN TABLE mpp_dist (
        c2 int
 ) SERVER pgserver OPTIONS (schema_name 'MPP_S 1', table_name 'T 1') DISTRIBUTED BY (c1);
 
+EXPLAIN (VERBOSE, COSTS OFF) INSERT INTO mpp_dist VALUES (1, 1), (2, 2), (3, 3);
 INSERT INTO mpp_dist VALUES (1, 1), (2, 2), (3, 3);
+EXPLAIN (VERBOSE, COSTS OFF) SELECT * FROM mpp_dist ORDER BY c1;
 SELECT * FROM mpp_dist ORDER BY c1;
+\! env PGOPTIONS='' psql -p 5432 contrib_regression -c 'SELECT * FROM "MPP_S 1"."T 1" ORDER BY c1'
+\! env PGOPTIONS='' psql -p 5555 contrib_regression -c 'SELECT * FROM "MPP_S 1"."T 1" ORDER BY c1'
 
-EXPLAIN VERBOSE SELECT * FROM mpp_dist t1 JOIN mpp_dist t2 ON t1.c1 = t2.c1 ORDER BY t1.c1;
+EXPLAIN (VERBOSE, COSTS OFF) SELECT * FROM mpp_dist t1 JOIN mpp_dist t2 ON t1.c1 = t2.c1 ORDER BY t1.c1;
 SELECT * FROM mpp_dist t1 JOIN mpp_dist t2 ON t1.c1 = t2.c1 ORDER BY t1.c1;
 
+EXPLAIN (VERBOSE, COSTS OFF) UPDATE mpp_dist SET c1 = 1;
 UPDATE mpp_dist SET c1 = 1;
+
+EXPLAIN (VERBOSE, COSTS OFF) UPDATE mpp_dist SET c2 = 2;
+UPDATE mpp_dist SET c2 = 2;
+
+SELECT * FROM mpp_dist ORDER BY c1;
 
 DELETE FROM mpp_dist;
 
@@ -262,7 +272,10 @@ CREATE FOREIGN TABLE mpp_dist_repl (
        c2 int
 ) SERVER pgserver OPTIONS (schema_name 'MPP_S 1', table_name 'T 1') DISTRIBUTED REPLICATED;
 
+EXPLAIN (VERBOSE, COSTS OFF) INSERT INTO mpp_dist_repl VALUES (1, 1), (2, 2), (3, 3);
 INSERT INTO mpp_dist_repl VALUES (1, 1), (2, 2), (3, 3);
+
+EXPLAIN (VERBOSE, COSTS OFF) SELECT * FROM mpp_dist_repl ORDER BY c1;
 SELECT * FROM mpp_dist_repl ORDER BY c1;
 \! env PGOPTIONS='' psql -p 5432 contrib_regression -c 'SELECT * FROM "MPP_S 1"."T 1" ORDER BY c1'
 \! env PGOPTIONS='' psql -p 5555 contrib_regression -c 'SELECT * FROM "MPP_S 1"."T 1" ORDER BY c1'
