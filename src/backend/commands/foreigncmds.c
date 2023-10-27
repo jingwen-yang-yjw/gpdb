@@ -1681,6 +1681,8 @@ CreateForeignTable(CreateForeignTableStmt *stmt, Oid relid, bool skip_permission
 		if ((stmt->distributedBy->ptype == POLICYTYPE_PARTITIONED || stmt->distributedBy->ptype == POLICYTYPE_REPLICATED) &&
 			mpp_execute != FTEXECLOCATION_ALL_SEGMENTS)
 			ereport(ERROR, (errcode(ERRCODE_FDW_ERROR), errmsg("Hash, random and replicated distribution must set option mpp_execute to \"all segments\"")));
+
+		list_free(tmp_options);
 	}
 
 	/*
