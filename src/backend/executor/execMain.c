@@ -5019,7 +5019,18 @@ FillSliceGangInfo(Slice *slice, int numsegments)
 			break;
 		case GANGTYPE_SINGLETON_READER:
 			slice->gangSize = 1;
-			slice->segments = list_make1_int(gp_session_id % numsegments);
+			/*
+			 * numsegments might be larger than the number of gpdb actual segments for foreign table.
+			 * For example, for gp2gp, when remote gpdb cluster has more segments than local gpdb,
+			 * numsegments will be larger than getgpsegmentCount().
+			 *
+			 * So we need to use the minimum of numsegments and getgpsegmentCount() here.
+			 */
+			int gp_segment_count = getgpsegmentCount();
+			if (numsegments < gp_segment_count)
+				slice->segments = list_make1_int(gp_session_id % numsegments);
+			else
+				slice->segments = list_make1_int(gp_session_id % gp_segment_count);
 			break;
 		default:
 			elog(ERROR, "unexpected gang type");
