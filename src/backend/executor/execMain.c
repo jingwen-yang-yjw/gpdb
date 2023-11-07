@@ -5027,10 +5027,7 @@ FillSliceGangInfo(Slice *slice, int numsegments)
 			 * So we need to use the minimum of numsegments and getgpsegmentCount() here.
 			 */
 			int gp_segment_count = getgpsegmentCount();
-			if (numsegments < gp_segment_count)
-				slice->segments = list_make1_int(gp_session_id % numsegments);
-			else
-				slice->segments = list_make1_int(gp_session_id % gp_segment_count);
+			slice->segments = list_make1_int(gp_session_id % Min(numsegments, gp_segment_count));
 			break;
 		default:
 			elog(ERROR, "unexpected gang type");
