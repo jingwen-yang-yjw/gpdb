@@ -111,6 +111,16 @@ set search_path=postgres_fdw_gp;
 alter server loopback options(add num_segments '4');
 EXPLAIN (VERBOSE, COSTS FALSE) SELECT * FROM gp_ft1;
 EXPLAIN ANALYZE SELECT * FROM gp_ft1;
+-- test whether segment index in slice->segments is valid or not when
+-- the value of option num_segments is larger than the number of gpdb actual segments.
+CREATE TABLE tmp_tbl (
+	f1 int,
+	f2 text,
+	f3 text
+) DISTRIBUTED BY (f1);
+EXPLAIN (VERBOSE, COSTS FALSE) INSERT INTO tmp_tbl SELECT * FROM gp_ft1 LIMIT 5;
+INSERT INTO tmp_tbl SELECT * FROM gp_ft1 LIMIT 5;
+DROP TABLE tmp_tbl;
 EXPLAIN (VERBOSE, COSTS FALSE) SELECT count(*) FROM gp_ft1;
 EXPLAIN (VERBOSE, COSTS FALSE) SELECT * FROM gp_ft1 t1 INNER JOIN gp_ft1 t2 ON t1.f1 = t2.f1 LIMIT 3;
 EXPLAIN (COSTS FALSE) INSERT INTO gp_ft1 SELECT * FROM table_dist_rand;
