@@ -3105,6 +3105,7 @@ create_motion_plan(PlannerInfo *root, CdbMotionPath *path)
 
 		case CdbLocusType_SingleQE:
 			{
+				int gp_segment_count = getgpsegmentCount();
 				sendSlice->gangType = GANGTYPE_SINGLETON_READER;
 				sendSlice->numsegments = 1;
 				/*
@@ -3115,7 +3116,6 @@ create_motion_plan(PlannerInfo *root, CdbMotionPath *path)
 				 *
 				 * So we need to use the minimum of numsegments and getgpsegmentCount() here.
 				 */
-				int gp_segment_count = getgpsegmentCount();
 				sendSlice->segindex = gp_session_id % Min(subpath->locus.numsegments, gp_segment_count);
 				break;
 			}
@@ -3127,21 +3127,10 @@ create_motion_plan(PlannerInfo *root, CdbMotionPath *path)
 			break;
 
 		case CdbLocusType_SegmentGeneral:
-			{
-				sendSlice->gangType = GANGTYPE_SINGLETON_READER;
-				sendSlice->numsegments = subpath->locus.numsegments;
-				/*
-				 * sendSlice->segindex must be smaller than the number of gpdb actual segments.
-				 *
-				 * For foreign table, subpath->locus.numsegments might be larger than the number of
-				 * gpdb actual segments.
-				 *
-				 * So we need to use the minimum of numsegments and getgpsegmentCount() here.
-				 */
-				int gp_segment_count = getgpsegmentCount();
-				sendSlice->segindex = gp_session_id % Min(subpath->locus.numsegments, gp_segment_count);
-				break;
-			}
+			sendSlice->gangType = GANGTYPE_SINGLETON_READER;
+			sendSlice->numsegments = subpath->locus.numsegments;
+			sendSlice->segindex = gp_session_id % subpath->locus.numsegments;
+			break;
 
 		case CdbLocusType_Replicated:
 			// is probably writer, set already
