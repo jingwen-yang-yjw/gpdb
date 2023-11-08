@@ -319,9 +319,11 @@ GpPolicyFetch(Oid tbloid)
 	HeapTuple	gp_policy_tuple = NULL;
 
 	/*
+	 * 1. Handle specific external table firstly.
+	 *
 	 * EXECUTE-type external tables have an "ON ..." specification.
-	 * See if it's "COORDINATOR_ONLY". Other types of external tables have a
-	 * gp_distribution_policy row, like normal tables.
+	 * See if it's "COORDINATOR_ONLY".
+	 *
 	 */
 	if (rel_is_external_table(tbloid))
 	{
@@ -371,6 +373,11 @@ GpPolicyFetch(Oid tbloid)
 	}
 
 	/*
+	 * 2. Try to get gp_distribution_policy of tables from catalog.
+	 *
+	 * Normal tables, some type of external tables and common foreign tables
+	 * might have a gp_distribution_policy row.
+	 *
 	 * Select by value of the localoid field
 	 *
 	 * SELECT * FROM gp_distribution_policy WHERE localoid = :1
@@ -459,7 +466,14 @@ GpPolicyFetch(Oid tbloid)
 
 		ReleaseSysCache(gp_policy_tuple);
 	}
-	else if (get_rel_relkind(tbloid) == RELKIND_FOREIGN_TABLE)
+
+	/*
+	 * 3. For foreign tables which don't have gp_distribution_policy row and
+	 *    exec_location == FTEXECLOCATION_ALL_SEGMENTS,
+	 *    we will make RandomPartitionedPolicy for them.
+	 *
+	 */
+	if (get_rel_relkind(tbloid) == RELKIND_FOREIGN_TABLE && policy == NULL)
 	{
 		/*
 		 * Similar to the external table creation, there is a transient state
@@ -493,7 +507,9 @@ GpPolicyFetch(Oid tbloid)
 		}
 	}
 
-	/* Interpret absence of a valid policy row as POLICYTYPE_ENTRY */
+	/*
+	 * 4. Interpret absence of a valid policy row and meaningful rules as POLICYTYPE_ENTRY.
+	 */
 	if (policy == NULL)
 	{
 		return makeGpPolicy(POLICYTYPE_ENTRY, 0, -1);
