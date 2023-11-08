@@ -1673,16 +1673,13 @@ CreateForeignTable(CreateForeignTableStmt *stmt, Oid relid, bool skip_permission
 	 */
 	if (stmt->distributedBy != NULL)
 	{
-		List *tmp_options = list_copy(stmt->options);
-		char mpp_execute = SeparateOutMppExecute(&tmp_options);
+		char mpp_execute = GetMppExecuteOption(stmt->options);
 		if (mpp_execute == FTEXECLOCATION_NOT_DEFINED)
 			mpp_execute = server->exec_location;
 
 		if ((stmt->distributedBy->ptype == POLICYTYPE_PARTITIONED || stmt->distributedBy->ptype == POLICYTYPE_REPLICATED) &&
 			mpp_execute != FTEXECLOCATION_ALL_SEGMENTS)
 			ereport(ERROR, (errcode(ERRCODE_FDW_ERROR), errmsg("Hash, random and replicated distribution must set option mpp_execute to \"all segments\"")));
-
-		list_free(tmp_options);
 	}
 
 	/*
