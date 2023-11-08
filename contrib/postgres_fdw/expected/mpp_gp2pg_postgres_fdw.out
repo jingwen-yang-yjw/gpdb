@@ -79,7 +79,7 @@ ALTER FOREIGN TABLE mpp_test OPTIONS (drop mpp_execute);
 -- Error when the value of option num_segments is NOT same as the length of option multi_hosts and multi_ports.
 ALTER SERVER pgserver OPTIONS (set num_segments '1');
 SELECT * FROM mpp_test;
-ERROR:  server option num_segments, multi_hosts and multi_ports don't match. (postgres_fdw.c:1513)  (seg0 slice1 127.0.0.1:7002 pid=24510)
+ERROR:  server option num_segments, multi_hosts and multi_ports don't match. (postgres_fdw.c:1515)  (seg0 slice1 127.0.0.1:7002 pid=24510)
 ALTER SERVER pgserver OPTIONS (set num_segments '2');
 -- ===================================================================
 -- Simple queries
