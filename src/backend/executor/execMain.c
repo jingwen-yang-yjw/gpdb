@@ -5019,6 +5019,7 @@ FillSliceGangInfo(Slice *slice, int numsegments)
 			break;
 		case GANGTYPE_SINGLETON_READER:
 			{
+				int gp_segment_count = getgpsegmentCount();
 				slice->gangSize = 1;
 				/*
 				 * numsegments might be larger than the number of gpdb actual segments for foreign table.
@@ -5027,7 +5028,6 @@ FillSliceGangInfo(Slice *slice, int numsegments)
 				 *
 				 * So we need to use the minimum of numsegments and getgpsegmentCount() here.
 				 */
-				int gp_segment_count = getgpsegmentCount();
 				slice->segments = list_make1_int(gp_session_id % Min(numsegments, gp_segment_count));
 				break;
 			}
