@@ -45,17 +45,11 @@ CREATE FOREIGN TABLE ft1_hash_dist (
 SELECT policytype, numsegments, distkey, distclass 
 FROM gp_distribution_policy WHERE localoid = 'ft1_hash_dist'::regclass;
 
-CREATE FOREIGN TABLE ft1_repl_dist (
-	c1 int
-) SERVER s1 OPTIONS (delimiter ',', mpp_execute 'coordinator') DISTRIBUTED REPLICATED;     -- ERROR
+ALTER FOREIGN TABLE ft1_hash_dist SET DISTRIBUTED REPLICATED;
 
 CREATE FOREIGN TABLE ft1_repl_dist (
 	c1 int
-) SERVER s1 OPTIONS (delimiter ',', mpp_execute 'all segments') DISTRIBUTED REPLICATED;
-SELECT policytype, numsegments, distkey, distclass 
-FROM gp_distribution_policy WHERE localoid = 'ft1_repl_dist'::regclass;
-
-ALTER FOREIGN TABLE ft1_repl_dist SET DISTRIBUTED BY (c1);
+) SERVER s1 OPTIONS (delimiter ',', mpp_execute 'all segments') DISTRIBUTED REPLICATED;	-- ERROR
 
 -- start_ignore
 DROP FOREIGN DATA WRAPPER dummy CASCADE;

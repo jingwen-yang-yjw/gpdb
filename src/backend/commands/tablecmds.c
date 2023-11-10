@@ -5158,6 +5158,12 @@ ATPrepCmd(List **wqueue, Relation rel, AlterTableCmd *cmd,
 		case AT_SetDistributedBy:	/* SET DISTRIBUTED BY */
 			ATSimplePermissions(rel, ATT_TABLE | ATT_FOREIGN_TABLE);
 
+			if (rel->rd_rel->relkind == RELKIND_FOREIGN_TABLE && !rel_is_external_table(rel->rd_id))
+			{
+				ereport(ERROR,
+						errmsg("Greenplum doesn't support to modify distribution policy of common foreign table now."));
+			}
+
 			if (!recursing) /* MPP-5772, MPP-5784 */
 			{
 				DistributedBy *ldistro;
@@ -18063,7 +18069,7 @@ ATExecSetDistributedBy(Relation rel, Node *node, AlterTableCmd *cmd)
 			rel_is_external_table(RelationGetRelid(rel)))
 			need_reorg = false;
 		else if (rel->rd_rel->relkind == RELKIND_FOREIGN_TABLE)
-			elog(ERROR, "Greenplum don't support to modify distributed key of distributed foreign table.");
+			elog(ERROR, "Greenplum doesn't support to modify distribution policy of common foreign table now.");
 		else
 			elog(ERROR, "unexpected relkind '%c'", rel->rd_rel->relkind);
 
