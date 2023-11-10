@@ -1405,8 +1405,9 @@ postgresGetForeignPlan(PlannerInfo *root,
 }
 
 /*
- * Get the order of current QE in current gang, which is
- * used as index to decide which remote server current QE
+ * This function returns the index of current QE process in slice->processesList.
+ *
+ * We use this index to decide which remote server current QE
  * should connect to.
  *
  * Only when Gp_role == GP_ROLE_EXECUTE we'll call this function.
@@ -1414,11 +1415,17 @@ postgresGetForeignPlan(PlannerInfo *root,
 static int get_hostinfo_index(EState *estate)
 {
 	ExecSlice *current_slice = &estate->es_sliceTable->slices[currentSliceId];
-
-	/* Get the process nth number in current gang */
 	int index = -1;
 	int i = 0;
 	ListCell *lc = NULL;
+
+	/*
+	 * Using the index of current QE process in slice->processesList can make sure that
+	 * QE process in a specific segment always connect to the same remote server.
+	 *
+	 * For example, QE process in segment 0 always connects to the first remote server in
+	 * the remote servers list.
+	 */
 	foreach_with_count(lc, current_slice->processesList, i)
 	{
 		int	identifier = lfirst_int(lc);
@@ -1582,6 +1589,10 @@ postgresBeginForeignScan(ForeignScanState *node, int eflags)
 		/* scenario that there are multiple remote servers */
 		if (Gp_role == GP_ROLE_EXECUTE)
 		{
+			/*
+			 * Current QE will connect to a specific remote server
+			 * according to the index of current QE in slice->processList.
+			 */
 			int index = get_hostinfo_index(estate);
 			rewrite_server_options(server, index);
 			fsstate->conn = GetConnection(server, user, false);
@@ -1590,7 +1601,7 @@ postgresBeginForeignScan(ForeignScanState *node, int eflags)
 		{
 			ereport(ERROR,
 					(errcode(ERRCODE_FDW_ERROR),
-					 errmsg("Greenplum doesn't support access foreign table distributed in " \
+					 errmsg("Greenplum doesn't support access foreign table which is distributed to " \
 							 "multiple remote servers in utility mode.")));
 		}
 		/* If there are multiple remote servers, QD won't built connection to remote pg server. */
@@ -2595,6 +2606,10 @@ postgresBeginDirectModify(ForeignScanState *node, int eflags)
 		/* scenario that there are multiple remote servers */
 		if (Gp_role == GP_ROLE_EXECUTE)
 		{
+			/*
+			 * Current QE will connect to a specific remote server
+			 * according to the index of current QE in slice->processList.
+			 */
 			int index = get_hostinfo_index(estate);
 			rewrite_server_options(server, index);
 			dmstate->conn = GetConnection(server, user, false);
@@ -2603,7 +2618,7 @@ postgresBeginDirectModify(ForeignScanState *node, int eflags)
 		{
 			ereport(ERROR,
 					(errcode(ERRCODE_FDW_ERROR),
-					 errmsg("Greenplum doesn't support access foreign table distributed in " \
+					 errmsg("Greenplum doesn't support access foreign table which is distributed to " \
 							 "multiple remote servers in utility mode.")));
 		}
 		/* If there are multiple remote servers, QD won't built connection to remote pg server. */
@@ -3785,6 +3800,10 @@ create_foreign_modify(EState *estate,
 		/* scenario that there are multiple remote servers */
 		if (Gp_role == GP_ROLE_EXECUTE)
 		{
+			/*
+			 * Current QE will connect to a specific remote server
+			 * according to the index of current QE in slice->processList.
+			 */
 			int index = get_hostinfo_index(estate);
 			rewrite_server_options(server, index);
 			fmstate->conn = GetConnection(server, user, false);
@@ -3793,7 +3812,7 @@ create_foreign_modify(EState *estate,
 		{
 			ereport(ERROR,
 					(errcode(ERRCODE_FDW_ERROR),
-					 errmsg("Greenplum doesn't support access foreign table distributed in " \
+					 errmsg("Greenplum doesn't support access foreign table which is distributed to " \
 							 "multiple remote servers in utility mode.")));
 		}
 		/* If there are multiple remote servers, QD won't built connection to remote pg server. */
