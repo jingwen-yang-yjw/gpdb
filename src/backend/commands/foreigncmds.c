@@ -197,7 +197,7 @@ transformGenericOptions(Oid catalogId,
 	 */
 	if (catalogId != UserMappingRelationId)
 	{
-		SeparateOutMppExecute(&resultOptions);
+		GetMppExecuteOption(&resultOptions, true);
 	}
 
 	if (catalogId == ForeignServerRelationId)
@@ -1677,7 +1677,7 @@ CreateForeignTable(CreateForeignTableStmt *stmt, Oid relid, bool skip_permission
 			ereport(ERROR, (errcode(ERRCODE_FDW_ERROR),
 							errmsg("Distribution policy can NOT be set to DISTRIBUTED REPLICATED for foreign table.")));
 
-		char mpp_execute = GetMppExecuteOption(stmt->options);
+		char mpp_execute = GetMppExecuteOption(&stmt->options, false);
 		if (mpp_execute == FTEXECLOCATION_NOT_DEFINED)
 			mpp_execute = server->exec_location;
 

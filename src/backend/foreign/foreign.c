@@ -38,50 +38,13 @@
 extern Datum pg_options_to_table(PG_FUNCTION_ARGS);
 extern Datum postgresql_fdw_validator(PG_FUNCTION_ARGS);
 
-/* Get the mpp_execute option. */
+/*
+ * Get the mpp_execute option.
+ *
+ * If separateOut is true, remove mpp_execute option from options.
+ */
 char
-GetMppExecuteOption(List *options)
-{
-	ListCell *lc = NULL;
-	ListCell *prev = NULL;
-	char *mpp_execute = NULL;
-	char exec_location = FTEXECLOCATION_NOT_DEFINED;
-
-	foreach(lc, options)
-	{
-		DefElem    *def = (DefElem *) lfirst(lc);
-
-		if (strcmp(def->defname, "mpp_execute") == 0)
-		{
-			mpp_execute = defGetString(def);
-
-			if (pg_strcasecmp(mpp_execute, "any") == 0)
-				exec_location = FTEXECLOCATION_ANY;
-			else if (pg_strcasecmp(mpp_execute, "master") == 0)
-				exec_location = FTEXECLOCATION_COORDINATOR;
-			else if (pg_strcasecmp(mpp_execute, "coordinator") == 0)
-				exec_location = FTEXECLOCATION_COORDINATOR;
-			else if (pg_strcasecmp(mpp_execute, "all segments") == 0)
-				exec_location = FTEXECLOCATION_ALL_SEGMENTS;
-			else
-			{
-				ereport(ERROR,
-						(errcode(ERRCODE_SYNTAX_ERROR),
-						 errmsg("\"%s\" is not a valid mpp_execute value",
-								mpp_execute)));
-			}
-
-			break;
-		}
-		prev = lc;
-	}
-
-	return exec_location;
-}
-
-/* Get and separate out the mpp_execute option. */
-char
-SeparateOutMppExecute(List **options)
+GetMppExecuteOption(List **options, bool separateOut)
 {
 	ListCell *lc = NULL;
 	ListCell *prev = NULL;
@@ -112,7 +75,8 @@ SeparateOutMppExecute(List **options)
 								mpp_execute)));
 			}
 
-			*options = list_delete_cell(*options, lc, prev);
+			if (separateOut)
+				*options = list_delete_cell(*options, lc, prev);
 			break;
 		}
 		prev = lc;
@@ -208,7 +172,8 @@ GetForeignDataWrapperExtended(Oid fdwid, bits16 flags)
 	else
 		fdw->options = untransformRelOptions(datum);
 
-	fdw->exec_location = SeparateOutMppExecute(&fdw->options);
+	/* Get mpp_execute option and remove it from fdw->options. */
+	fdw->exec_location = GetMppExecuteOption(&fdw->options, true);
 	if (fdw->exec_location == FTEXECLOCATION_NOT_DEFINED)
 		fdw->exec_location = FTEXECLOCATION_COORDINATOR;
 
@@ -299,7 +264,8 @@ GetForeignServerExtended(Oid serverid, bits16 flags)
 	else
 		server->options = untransformRelOptions(datum);
 
-	server->exec_location = SeparateOutMppExecute(&server->options);
+	/* Get mpp_execute option and remove it from server->options. */
+	server->exec_location = GetMppExecuteOption(&server->options, true);
 	if (server->exec_location == FTEXECLOCATION_NOT_DEFINED)
 	{
 		ForeignDataWrapper *fdw = GetForeignDataWrapper(server->fdwid);
@@ -417,7 +383,8 @@ GetForeignTable(Oid relid)
 	else
 		ft->options = untransformRelOptions(datum);
 
-	ft->exec_location = SeparateOutMppExecute(&ft->options);
+	/* Get mpp_execute option and remove it from ft->options. */
+	ft->exec_location = GetMppExecuteOption(&ft->options, true);
 	if (ft->exec_location == FTEXECLOCATION_NOT_DEFINED)
 	{
 		ForeignServer *server = GetForeignServer(ft->serverid);

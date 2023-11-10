@@ -78,8 +78,7 @@ typedef struct ForeignTable
 /* Flags for GetForeignDataWrapperExtended */
 #define FDW_MISSING_OK	0x01
 
-extern char GetMppExecuteOption(List *options);
-extern char SeparateOutMppExecute(List **options);
+extern char GetMppExecuteOption(List **options, bool separateOut);
 extern int32 SeparateOutNumSegments(List **options);
 extern ForeignServer *GetForeignServer(Oid serverid);
 extern ForeignServer *GetForeignServerExtended(Oid serverid,
