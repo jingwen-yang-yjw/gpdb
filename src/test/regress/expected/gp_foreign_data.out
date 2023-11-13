@@ -41,7 +41,7 @@ SELECT srvoptions FROM pg_foreign_server WHERE srvname = 's1';
 CREATE FOREIGN TABLE ft1_hash_dist (
 	c1 int
 ) SERVER s1 OPTIONS (delimiter ',', mpp_execute 'coordinator') DISTRIBUTED BY (c1);     -- ERROR
-ERROR:  Hash and random distribution must set option mpp_execute to "all segments" for foreign table.
+ERROR:  The option mpp_execute of foreign table with hash or random distribution must be set to "all segments".
 CREATE FOREIGN TABLE ft1_hash_dist (
 	c1 int
 ) SERVER s1 OPTIONS (delimiter ',', mpp_execute 'all segments') DISTRIBUTED BY (c1);

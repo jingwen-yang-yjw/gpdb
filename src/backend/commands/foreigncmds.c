@@ -1673,6 +1673,10 @@ CreateForeignTable(CreateForeignTableStmt *stmt, Oid relid, bool skip_permission
 	 */
 	if (stmt->distributedBy != NULL)
 	{
+		/*
+		 * Users can NOT set stmt->distributedBy->ptype to POLICYTYPE_ENTRY by Distributed clause.
+		 * So stmt->distributedBy->ptype MUST be POLICYTYPE_REPLICATED or POLICYTYPE_PARTITIONED here.
+		 */
 		if (stmt->distributedBy->ptype == POLICYTYPE_REPLICATED)
 			ereport(ERROR, (errcode(ERRCODE_FDW_ERROR),
 							errmsg("Distribution policy can NOT be set to DISTRIBUTED REPLICATED for foreign table.")));
@@ -1681,9 +1685,13 @@ CreateForeignTable(CreateForeignTableStmt *stmt, Oid relid, bool skip_permission
 		if (mpp_execute == FTEXECLOCATION_NOT_DEFINED)
 			mpp_execute = server->exec_location;
 
-		if (stmt->distributedBy->ptype == POLICYTYPE_PARTITIONED && mpp_execute != FTEXECLOCATION_ALL_SEGMENTS)
+		if (mpp_execute != FTEXECLOCATION_ALL_SEGMENTS)
+		{
+			Assert(stmt->distributedBy->ptype == POLICYTYPE_PARTITIONED);
 			ereport(ERROR, (errcode(ERRCODE_FDW_ERROR),
-							errmsg("Hash and random distribution must set option mpp_execute to \"all segments\" for foreign table.")));
+							errmsg("The option mpp_execute of foreign table with hash or random distribution " \
+									"must be set to \"all segments\".")));
+		}
 	}
 
 	/*
