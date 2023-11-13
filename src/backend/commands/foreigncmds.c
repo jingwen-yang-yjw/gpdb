@@ -1670,8 +1670,11 @@ CreateForeignTable(CreateForeignTableStmt *stmt, Oid relid, bool skip_permission
 
 	/*
 	 * Check compatibility between Distributed By clause and mpp_execute option.
+	 *
+	 * External table is a specific kind of foreign table and have its permission check before.
+	 * So skip its check here.
 	 */
-	if (stmt->distributedBy != NULL)
+	if (stmt->distributedBy != NULL && strcmp(stmt->servername, GP_EXTTABLE_SERVER_NAME) != 0)
 	{
 		/*
 		 * Users can NOT set stmt->distributedBy->ptype to POLICYTYPE_ENTRY by Distributed clause.
