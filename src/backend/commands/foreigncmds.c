@@ -197,7 +197,7 @@ transformGenericOptions(Oid catalogId,
 	 */
 	if (catalogId != UserMappingRelationId)
 	{
-		GetMppExecuteOption(&resultOptions, true);
+		SeparateOutMppExecute(&resultOptions);
 	}
 
 	if (catalogId == ForeignServerRelationId)
@@ -1686,7 +1686,7 @@ CreateForeignTable(CreateForeignTableStmt *stmt, Oid relid, bool skip_permission
 
 		Assert(stmt->distributedBy->ptype == POLICYTYPE_PARTITIONED);
 
-		char mpp_execute = GetMppExecuteOption(&stmt->options, false);
+		char mpp_execute = GetMppExecuteOption(stmt->options);
 		if (mpp_execute == FTEXECLOCATION_NOT_DEFINED)
 			mpp_execute = server->exec_location;
 
