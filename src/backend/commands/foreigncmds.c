@@ -1684,17 +1684,16 @@ CreateForeignTable(CreateForeignTableStmt *stmt, Oid relid, bool skip_permission
 			ereport(ERROR, (errcode(ERRCODE_FDW_ERROR),
 							errmsg("Distribution policy can NOT be set to DISTRIBUTED REPLICATED for foreign table.")));
 
+		Assert(stmt->distributedBy->ptype == POLICYTYPE_PARTITIONED);
+
 		char mpp_execute = GetMppExecuteOption(&stmt->options, false);
 		if (mpp_execute == FTEXECLOCATION_NOT_DEFINED)
 			mpp_execute = server->exec_location;
 
 		if (mpp_execute != FTEXECLOCATION_ALL_SEGMENTS)
-		{
-			Assert(stmt->distributedBy->ptype == POLICYTYPE_PARTITIONED);
 			ereport(ERROR, (errcode(ERRCODE_FDW_ERROR),
 							errmsg("The option mpp_execute of foreign table with hash or random distribution " \
 									"must be set to \"all segments\".")));
-		}
 	}
 
 	/*
