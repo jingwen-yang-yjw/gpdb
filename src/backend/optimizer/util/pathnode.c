@@ -3481,6 +3481,133 @@ create_foreign_join_path(PlannerInfo *root, RelOptInfo *rel,
 }
 
 /*
+ * build_foreign_join_path_locus
+ *	  build foreign join path locus according to its subpaths.
+ */
+static CdbPathLocus
+build_foreign_join_path_locus(RelOptInfo *joinrel, RelOptInfo *outerrel, RelOptInfo *innerrel)
+{
+	Path	*outer_foreign_path = NULL;
+	Path	*inner_foreign_path = NULL;
+	Path	*path = NULL;
+	ListCell	*p = NULL;
+	CdbPathLocus foreign_join_locus;
+
+	foreach(p, outerrel->pathlist)
+	{
+		path = (Path *) lfirst(p);
+		if (path->pathtype == T_ForeignScan)
+		{
+			outer_foreign_path = path;
+			break;
+		}
+	}
+
+	foreach(p, innerrel->pathlist)
+	{
+		path = (Path *) lfirst(p);
+		if (path->pathtype == T_ForeignScan)
+		{
+			inner_foreign_path = path;
+			break;
+		}
+	}
+
+	if (outer_foreign_path && inner_foreign_path &&
+		cdbpathlocus_equal(inner_foreign_path->locus, outer_foreign_path->locus))
+	{
+		/*
+		 * Decide foreign join path locus
+		 * according to inner_foreingn_path->locus and outer_foreign_path->locus.
+		 */
+		foreign_join_locus = inner_foreign_path->locus;
+	}
+	else
+	{
+		/* Decide foreign join path locus according to joinrel->exec_location. */
+		if (Gp_role == GP_ROLE_DISPATCH)
+		{
+			ForeignServer *server = NULL;
+
+			switch (joinrel->exec_location)
+			{
+				case FTEXECLOCATION_ANY:
+					CdbPathLocus_MakeGeneral(&foreign_join_locus);
+					break;
+				case FTEXECLOCATION_ALL_SEGMENTS:
+					server = GetForeignServer(joinrel->serverid);
+					if (server)
+						CdbPathLocus_MakeStrewn(&foreign_join_locus, server->num_segments);
+					else
+						CdbPathLocus_MakeStrewn(&foreign_join_locus, getgpsegmentCount());
+					break;
+				case FTEXECLOCATION_COORDINATOR:
+					CdbPathLocus_MakeEntry(&foreign_join_locus);
+					break;
+				default:
+					elog(ERROR, "unrecognized exec_location '%c'", joinrel->exec_location);
+			}
+		}
+		else
+		{
+			/* make entry locus for utility role */
+			CdbPathLocus_MakeEntry(&foreign_join_locus);
+		}
+	}
+	return foreign_join_locus;
+}
+
+/*
+ * create_foreign_join_path_extended
+ *	  Creates a path corresponding to a scan of a foreign join,
+ *	  returning the pathnode.
+ *
+ * Compared to function create_foreign_join_path, this function
+ * will try to build foreign join path locus according to subpaths.
+ * This guarantee that foreign join path locus is correct when foreign
+ * table has hash distribution policy.
+ */
+ForeignPath *
+create_foreign_join_path_extended(PlannerInfo *root, RelOptInfo *rel,
+								  RelOptInfo *outerrel, RelOptInfo *innerrel,
+								  PathTarget *target,
+								  double rows, Cost startup_cost, Cost total_cost,
+								  List *pathkeys,
+								  Relids required_outer,
+								  Path *fdw_outerpath,
+								  List *fdw_private)
+{
+	ForeignPath *pathnode = makeNode(ForeignPath);
+
+	/*
+	 * We should use get_joinrel_parampathinfo to handle parameterized paths,
+	 * but the API of this function doesn't support it, and existing
+	 * extensions aren't yet trying to build such paths anyway.  For the
+	 * moment just throw an error if someone tries it; eventually we should
+	 * revisit this.
+	 */
+	if (!bms_is_empty(required_outer) || !bms_is_empty(rel->lateral_relids))
+		elog(ERROR, "parameterized foreign joins are not supported yet");
+
+	pathnode->path.pathtype = T_ForeignScan;
+	pathnode->path.parent = rel;
+	pathnode->path.pathtarget = target ? target : rel->reltarget;
+	pathnode->path.param_info = NULL;	/* XXX see above */
+	pathnode->path.parallel_aware = false;
+	pathnode->path.parallel_safe = rel->consider_parallel;
+	pathnode->path.parallel_workers = 0;
+	pathnode->path.rows = rows;
+	pathnode->path.startup_cost = startup_cost;
+	pathnode->path.total_cost = total_cost;
+	pathnode->path.pathkeys = pathkeys;
+	pathnode->path.locus = build_foreign_join_path_locus(rel, outerrel, innerrel);
+	pathnode->fdw_outerpath = fdw_outerpath;
+	pathnode->fdw_private = fdw_private;
+
+	return pathnode;
+}
+
+/*
  * create_foreign_upper_path
  *	  Creates a path corresponding to an upper relation that's computed
  *	  directly by an FDW, returning the pathnode.

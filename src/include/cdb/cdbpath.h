@@ -58,6 +58,11 @@ cdbpath_motion_for_join(PlannerInfo    *root,
                         bool            outer_require_existing_order,
                         bool            inner_require_existing_order);
 
+extern bool is_mpp_join_pushdown_safe(PlannerInfo *root,
+									  RelOptInfo *outerrel,
+									  RelOptInfo *innerrel,
+									  JoinPathExtraData *extra);
+
 extern bool cdbpath_contains_wts(Path *path);
 extern Path * turn_volatile_seggen_to_singleqe(PlannerInfo *root, Path *path, Node *node);
 

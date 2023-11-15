@@ -492,8 +492,10 @@ static bool foreign_grouping_ok(PlannerInfo *root, RelOptInfo *grouped_rel,
 static List *get_useful_pathkeys_for_relation(PlannerInfo *root,
 											  RelOptInfo *rel);
 static List *get_useful_ecs_for_relation(PlannerInfo *root, RelOptInfo *rel);
-static void add_paths_with_pathkeys_for_rel(PlannerInfo *root, RelOptInfo *rel,
-											Path *epq_path);
+static void
+add_paths_with_pathkeys_for_rel(PlannerInfo *root, RelOptInfo *rel,
+								RelOptInfo *outerrel, RelOptInfo *innerrel,
+								Path *epq_path);
 static void add_foreign_grouping_paths(PlannerInfo *root,
 									   RelOptInfo *input_rel,
 									   RelOptInfo *grouped_rel,
@@ -1011,7 +1013,7 @@ postgresGetForeignPaths(PlannerInfo *root,
 	add_path(baserel, (Path *) path);
 
 	/* Add paths with pathkeys */
-	add_paths_with_pathkeys_for_rel(root, baserel, NULL);
+	add_paths_with_pathkeys_for_rel(root, baserel, NULL, NULL, NULL);
 
 	/*
 	 * If we're not using remote estimates, stop here.  We have no way to
@@ -5806,6 +5808,7 @@ foreign_join_ok(PlannerInfo *root, RelOptInfo *joinrel, JoinType jointype,
 
 static void
 add_paths_with_pathkeys_for_rel(PlannerInfo *root, RelOptInfo *rel,
+								RelOptInfo *outerrel, RelOptInfo *innerrel,
 								Path *epq_path)
 {
 	List	   *useful_pathkeys_list = NIL; /* List of all pathkeys */
@@ -5854,15 +5857,16 @@ add_paths_with_pathkeys_for_rel(PlannerInfo *root, RelOptInfo *rel,
 											 NIL));
 		else
 			add_path(rel, (Path *)
-					 create_foreign_join_path(root, rel,
-											  NULL,
-											  rows,
-											  startup_cost,
-											  total_cost,
-											  useful_pathkeys,
-											  rel->lateral_relids,
-											  sorted_epq_path,
-											  NIL));
+					 create_foreign_join_path_extended(root, rel,
+													   outerrel, innerrel,
+													   NULL,
+													   rows,
+													   startup_cost,
+													   total_cost,
+													   useful_pathkeys,
+													   rel->lateral_relids,
+													   sorted_epq_path,
+													   NIL));
 	}
 }
 
@@ -6088,22 +6092,24 @@ postgresGetForeignJoinPaths(PlannerInfo *root,
 	 * Create a new join path and add it to the joinrel which represents a
 	 * join between foreign tables.
 	 */
-	joinpath = create_foreign_join_path(root,
-										joinrel,
-										NULL,	/* default pathtarget */
-										rows,
-										startup_cost,
-										total_cost,
-										NIL,	/* no pathkeys */
-										joinrel->lateral_relids,
-										epq_path,
-										NIL);	/* no fdw_private */
+	joinpath = create_foreign_join_path_extended(root,
+												 joinrel,
+												 outerrel,
+												 innerrel,
+												 NULL,	/* default pathtarget */
+												 rows,
+												 startup_cost,
+												 total_cost,
+												 NIL,	/* no pathkeys */
+												 joinrel->lateral_relids,
+												 epq_path,
+												 NIL);	/* no fdw_private */
 
 	/* Add generated path into joinrel by add_path(). */
 	add_path(joinrel, (Path *) joinpath);
 
 	/* Consider pathkeys for the join relation */
-	add_paths_with_pathkeys_for_rel(root, joinrel, epq_path);
+	add_paths_with_pathkeys_for_rel(root, joinrel, innerrel, outerrel, epq_path);
 
 	/* XXX Consider parameterized paths for the join relation */
 }

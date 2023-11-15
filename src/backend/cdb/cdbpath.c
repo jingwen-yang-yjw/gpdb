@@ -1232,6 +1232,47 @@ add_rowid_to_path(PlannerInfo *root, Path *path, int *rowidexpr_id)
 }
 
 /*
+ * is_mpp_join_pushdown_safe
+ *     Check whether it's safe to push JOIN in the remote server or not.
+ */
+bool is_mpp_join_pushdown_safe(PlannerInfo *root,
+							   RelOptInfo *outerrel,
+							   RelOptInfo *innerrel,
+							   JoinPathExtraData *extra)
+{
+	Path *outer_foreign_path = NULL;
+	Path *inner_foreign_path = NULL;
+	ListCell *p;
+	Path	*path;
+
+	foreach(p, outerrel->pathlist)
+	{
+		path = (Path *) lfirst(p);
+		if (path->pathtype == T_ForeignScan)
+		{
+			outer_foreign_path = path;
+			break;
+		}
+	}
+
+	foreach(p, innerrel->pathlist)
+	{
+		path = (Path *) lfirst(p);
+		if (path->pathtype == T_ForeignScan)
+		{
+			inner_foreign_path = path;
+			break;
+		}
+	}
+
+	if (!outer_foreign_path || !inner_foreign_path)
+		return false;
+
+	return cdbpath_match_preds_to_both_distkeys(root, extra->redistribution_clauses,
+												outer_foreign_path->locus, inner_foreign_path->locus);
+}
+
+/*
  * cdbpath_motion_for_join
  *
  * Decides where a join should be done.  Adds Motion operators atop

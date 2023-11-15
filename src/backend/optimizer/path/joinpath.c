@@ -360,12 +360,21 @@ add_paths_to_joinrel(PlannerInfo *root,
 	if (joinrel->fdwroutine &&
 		joinrel->fdwroutine->GetForeignJoinPaths)
 	{
-		if(joinrel->exec_location != FTEXECLOCATION_ALL_SEGMENTS ||
+		if (joinrel->exec_location != FTEXECLOCATION_ALL_SEGMENTS ||
 		   !joinrel->fdwroutine->IsMPPPlanNeeded || joinrel->fdwroutine->IsMPPPlanNeeded() == 0)
 		{
 			joinrel->fdwroutine->GetForeignJoinPaths(root, joinrel,
 													 outerrel, innerrel,
 													 jointype, &extra);
+		}
+		else if (joinrel->exec_location == FTEXECLOCATION_ALL_SEGMENTS &&
+				joinrel->fdwroutine->IsMPPPlanNeeded && joinrel->fdwroutine->IsMPPPlanNeeded())
+		{
+			// Check whether it's safe to push JOIN in the remote server or not.
+			if (is_mpp_join_pushdown_safe(root, outerrel, innerrel, &extra))
+				joinrel->fdwroutine->GetForeignJoinPaths(root, joinrel,
+														 outerrel, innerrel,
+														 jointype, &extra);
 		}
 	}
 
