@@ -52,6 +52,16 @@ CREATE FOREIGN TABLE mpp_ft2 (
 	c7 numeric
 ) SERVER pgserver OPTIONS (schema_name 'MPP_S 1', table_name 'T 2');
 
+CREATE FOREIGN TABLE mpp_dist_c1 (
+	c1 int,
+	c2 int
+) SERVER pgserver OPTIONS (schema_name 'MPP_S 1', table_name 'T 1') DISTRIBUTED BY (c1);
+
+CREATE FOREIGN TABLE mpp_dist_c12 (
+	c1 int,
+	c2 int
+) SERVER pgserver OPTIONS (schema_name 'MPP_S 1', table_name 'T 3') DISTRIBUTED BY (c1, c2);
+
 -- ===================================================================
 -- tests for validator
 -- ===================================================================
@@ -235,10 +245,43 @@ SELECT count(c1), max(c6) FROM mpp_ft2 GROUP BY c2 order by c2 limit 3;
 -- ===================================================================
 -- Queries with JOIN
 -- ===================================================================
--- join is not safe to pushed down when there are multiple remote servers
+\! env PGOPTIONS='' psql -p 5432 contrib_regression -c 'truncate "MPP_S 1"."T 1"'
+\! env PGOPTIONS='' psql -p 5555 contrib_regression -c 'truncate "MPP_S 1"."T 1"'
+\! env PGOPTIONS='' psql -p 5432 contrib_regression -c 'truncate "MPP_S 1"."T 3"'
+\! env PGOPTIONS='' psql -p 5555 contrib_regression -c 'truncate "MPP_S 1"."T 3"'
+INSERT INTO mpp_dist_c1 VALUES (1, 1), (2, 2);
+INSERT INTO mpp_dist_c12 VALUES (2, 2), (3, 3);
+ANALYZE mpp_dist_c1;
+ANALYZE mpp_dist_c12;
+-- join is always NOT safe to be pushed down when two foreign tables don't have same distribution policy
 EXPLAIN (VERBOSE, COSTS OFF)
-SELECT count(*), sum(t1.c1), avg(t2.c2) FROM mpp_ft2 t1 inner join mpp_ft2 t2 on (t1.c1 = t2.c1) where t1.c1 = 2;
-SELECT count(*), sum(t1.c1), avg(t2.c2) FROM mpp_ft2 t1 inner join mpp_ft2 t2 on (t1.c1 = t2.c1) where t1.c1 = 2;
+SELECT count(*), sum(t1.c1), avg(t2.c2) FROM mpp_ft2 t1 INNER JOIN mpp_ft2 t2 ON (t1.c1 = t2.c1) WHERE t1.c1 = 2;
+SELECT count(*), sum(t1.c1), avg(t2.c2) FROM mpp_ft2 t1 INNER JOIN mpp_ft2 t2 ON (t1.c1 = t2.c1) WHERE t1.c1 = 2;
+-- join is safe to be pushed down when two foreign tables have same distribution policy and
+-- join on their distribution key.
+-- Case 1: join is safe to be pushed down
+EXPLAIN (VERBOSE, COSTS OFF)
+SELECT * FROM mpp_dist_c12 t1 INNER JOIN mpp_dist_c12 t2 ON (t1.c1 = t2.c1 AND t1.c2 = t2.c2) ORDER BY t1.c1;
+SELECT * FROM mpp_dist_c12 t1 INNER JOIN mpp_dist_c12 t2 ON (t1.c1 = t2.c1 AND t1.c2 = t2.c2) ORDER BY t1.c1;
+EXPLAIN (VERBOSE, COSTS OFF)
+SELECT * FROM mpp_dist_c1 t1 LEFT OUTER JOIN mpp_dist_c1 t2 ON (t1.c1 = t2.c1) ORDER BY t1.c1;
+SELECT * FROM mpp_dist_c1 t1 LEFT OUTER JOIN mpp_dist_c1 t2 ON (t1.c1 = t2.c1) ORDER BY t1.c1;
+EXPLAIN (VERBOSE, COSTS OFF)
+SELECT * FROM mpp_dist_c1 t1 RIGHT OUTER JOIN mpp_dist_c1 t2 ON (t1.c1 = t2.c1 AND t1.c2 = t2.c2) ORDER BY t1.c1;
+SELECT * FROM mpp_dist_c1 t1 RIGHT OUTER JOIN mpp_dist_c1 t2 ON (t1.c1 = t2.c1 AND t1.c2 = t2.c2) ORDER BY t1.c1;
+EXPLAIN (VERBOSE, COSTS OFF)
+SELECT * FROM mpp_dist_c1 t1 INNER JOIN mpp_dist_c1 t2 ON (t1.c1 = t2.c1) INNER JOIN mpp_dist_c1 t3 ON (t1.c1 = t3.c1) ORDER BY t1.c1;
+SELECT * FROM mpp_dist_c1 t1 INNER JOIN mpp_dist_c1 t2 ON (t1.c1 = t2.c1) INNER JOIN mpp_dist_c1 t3 ON (t1.c1 = t3.c1) ORDER BY t1.c1;
+-- Case 2: join is NOT safe to be pushed down
+EXPLAIN (VERBOSE, COSTS OFF)
+SELECT * FROM mpp_dist_c12 t1 INNER JOIN mpp_dist_c12 t2 ON (t1.c1 = t2.c1) ORDER BY t1.c1;
+SELECT * FROM mpp_dist_c12 t1 INNER JOIN mpp_dist_c12 t2 ON (t1.c1 = t2.c1) ORDER BY t1.c1;
+EXPLAIN (VERBOSE, COSTS OFF)
+SELECT * FROM mpp_dist_c1 t1 LEFT OUTER JOIN mpp_dist_c12 t2 ON (t1.c1 = t2.c1 AND t1.c2 = t2.c2) ORDER BY t1.c1;
+SELECT * FROM mpp_dist_c1 t1 LEFT OUTER JOIN mpp_dist_c12 t2 ON (t1.c1 = t2.c1 AND t1.c2 = t2.c2) ORDER BY t1.c1;
+EXPLAIN (VERBOSE, COSTS OFF)
+SELECT * FROM mpp_dist_c1 t1 INNER JOIN mpp_dist_c1 t2 ON (t1.c1 = t2.c1) INNER JOIN mpp_dist_c1 t3 ON (t1.c1 = t3.c2) ORDER BY t1.c1;
+SELECT * FROM mpp_dist_c1 t1 INNER JOIN mpp_dist_c1 t2 ON (t1.c1 = t2.c1) INNER JOIN mpp_dist_c1 t3 ON (t1.c1 = t3.c2) ORDER BY t1.c1;
 
 -- =====================================================================================
 -- Test DISTRIBUTED BY clause for postgres_fdw foreign table

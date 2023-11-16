@@ -22,9 +22,15 @@ CREATE TABLE "MPP_S 1"."T 2" (
 	c7 numeric
 );
 
+CREATE TABLE "MPP_S 1"."T 3" (
+	c1 int,
+	c2 int
+);
+
 -- Disable autovacuum for these tables to avoid unexpected effects of that
 ALTER TABLE "MPP_S 1"."T 1" SET (autovacuum_enabled = 'false');
 ALTER TABLE "MPP_S 1"."T 2" SET (autovacuum_enabled = 'false');
+ALTER TABLE "MPP_S 1"."T 3" SET (autovacuum_enabled = 'false');
 
 INSERT INTO "MPP_S 1"."T 1"
 	SELECT id,
@@ -45,3 +51,4 @@ UPDATE "MPP_S 1"."T 2"
 
 ANALYZE "MPP_S 1"."T 1";
 ANALYZE "MPP_S 1"."T 2";
+ANALYZE "MPP_S 1"."T 3";
