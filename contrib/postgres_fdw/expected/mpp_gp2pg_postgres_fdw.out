@@ -1,4 +1,10 @@
 -- This file is used to test the feature that there are multiple remote postgres servers.
+-- start_matchsubs
+-- m/postgres_fdw.c:\d+/
+-- s/postgres_fdw.c:\d+/postgres_fdw.c:LINE/
+-- m/pathnode.c:\d+/
+-- s/pathnode.c:\d+/pathnode.c:LINE/
+-- end_matchsubs
 -- ===================================================================
 -- create FDW objects
 -- ===================================================================
@@ -79,7 +85,7 @@ ALTER FOREIGN TABLE mpp_test OPTIONS (drop mpp_execute);
 -- Error when the value of option num_segments is NOT same as the length of option multi_hosts and multi_ports.
 ALTER SERVER pgserver OPTIONS (set num_segments '1');
 SELECT * FROM mpp_test;
-ERROR:  server option num_segments, multi_hosts and multi_ports don't match. (postgres_fdw.c:1522)  (seg0 slice1 127.0.0.1:7002 pid=24510)
+ERROR:  server option num_segments, multi_hosts and multi_ports don't match. (postgres_fdw.c:LINE)  (seg0 slice1 127.0.0.1:7002 pid=24510)
 ALTER SERVER pgserver OPTIONS (set num_segments '2');
 -- ===================================================================
 -- Simple queries
@@ -1114,9 +1120,9 @@ SELECT * FROM mpp_dist t1 JOIN mpp_dist t2 ON t1.c1 = t2.c1 ORDER BY t1.c1;
 (3 rows)
 
 EXPLAIN (VERBOSE, COSTS OFF) UPDATE mpp_dist SET c1 = 1;
-ERROR:  Greenplum don't support update distributed key of distributed foreign table. (pathnode.c:5433)
+ERROR:  Greenplum don't support update distributed key of distributed foreign table. (pathnode.c:LINE)
 UPDATE mpp_dist SET c1 = 1;
-ERROR:  Greenplum don't support update distributed key of distributed foreign table. (pathnode.c:5433)
+ERROR:  Greenplum don't support update distributed key of distributed foreign table. (pathnode.c:LINE)
 EXPLAIN (VERBOSE, COSTS OFF) UPDATE mpp_dist SET c2 = 2;
                       QUERY PLAN                       
 -------------------------------------------------------

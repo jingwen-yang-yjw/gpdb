@@ -1,5 +1,10 @@
 -- This file is used to test the feature that there are multiple remote postgres servers.
-
+-- start_matchsubs
+-- m/postgres_fdw.c:\d+/
+-- s/postgres_fdw.c:\d+/postgres_fdw.c:LINE/
+-- m/pathnode.c:\d+/
+-- s/pathnode.c:\d+/pathnode.c:LINE/
+-- end_matchsubs
 -- ===================================================================
 -- create FDW objects
 -- ===================================================================

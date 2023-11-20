@@ -471,7 +471,6 @@ GpPolicyFetch(Oid tbloid)
 	 * 3. For foreign tables which don't have gp_distribution_policy row and
 	 *    exec_location == FTEXECLOCATION_ALL_SEGMENTS,
 	 *    we will make RandomPartitionedPolicy for them.
-	 *
 	 */
 	if (get_rel_relkind(tbloid) == RELKIND_FOREIGN_TABLE && policy == NULL)
 	{
