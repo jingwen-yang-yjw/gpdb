@@ -1686,8 +1686,7 @@ CreateForeignTable(CreateForeignTableStmt *stmt, Oid relid, bool skip_permission
 
 		Assert(stmt->distributedBy->ptype == POLICYTYPE_PARTITIONED);
 
-		List *tmp_options = list_copy(stmt->options);
-		char mpp_execute = SeparateOutMppExecute(&tmp_options);
+		char mpp_execute = GetMppExecuteOption(stmt->options);
 		if (mpp_execute == FTEXECLOCATION_NOT_DEFINED)
 			mpp_execute = server->exec_location;
 
@@ -1695,7 +1694,6 @@ CreateForeignTable(CreateForeignTableStmt *stmt, Oid relid, bool skip_permission
 			ereport(ERROR, (errcode(ERRCODE_FDW_ERROR),
 							errmsg("The option mpp_execute of foreign table with hash or random distribution " \
 									"must be set to \"all segments\".")));
-		list_free(tmp_options);
 	}
 
 	/*
