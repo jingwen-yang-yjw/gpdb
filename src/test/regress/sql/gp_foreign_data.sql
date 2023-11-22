@@ -51,6 +51,14 @@ CREATE FOREIGN TABLE ft1_repl_dist (
 	c1 int
 ) SERVER s1 OPTIONS (delimiter ',', mpp_execute 'all segments') DISTRIBUTED REPLICATED;	-- ERROR
 
+
+-- Attaching distributed foreign table to a partition table is NOT enabled.
+CREATE TABLE l_tbl_parent (
+	c1 int
+) PARTITION BY RANGE(c1) DISTRIBUTED BY (c1);
+ALTER TABLE l_tbl_parent ATTACH PARTITION ft1_hash_dist FOR VALUES FROM (0) TO (100); --ERROR
+DROP TABLE l_tbl_parent;
+
 -- start_ignore
 DROP FOREIGN DATA WRAPPER dummy CASCADE;
 -- end_ignore
