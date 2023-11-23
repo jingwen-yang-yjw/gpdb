@@ -5236,9 +5236,7 @@ ATPrepCmd(List **wqueue, Relation rel, AlterTableCmd *cmd,
 
 			if (!recursing)
 			{
-				/* For foreign table, there is no need to check its rel->rd_cdbpolicy->numsegments. */
 				if (Gp_role == GP_ROLE_DISPATCH &&
-				    rel->rd_rel->relkind != RELKIND_FOREIGN_TABLE &&
 					rel->rd_cdbpolicy->numsegments == getgpsegmentCount())
 					ereport(ERROR,
 							(errcode(ERRCODE_WRONG_OBJECT_TYPE),
@@ -20558,16 +20556,6 @@ ATExecAttachPartition(List **wqueue, Relation rel, PartitionCmd *cmd)
 			ereport(NOTICE,
 					(errcode(ERRCODE_WRONG_OBJECT_TYPE),
 					 errmsg("partition constraints are not validated when attaching a readable external table")));
-
-		/*
-		 * Attach a distributed foreign table to a partition table might cause unexpacted behaviour.
-		 * So disable it here.
-		 */
-		if (!exttable && attachrel->rd_cdbpolicy->ptype == POLICYTYPE_PARTITIONED)
-			ereport(ERROR,
-					(errcode(ERRCODE_WRONG_OBJECT_TYPE),
-					 errmsg("cannot attach a distributed foreign table")));
-
 		if (exttable)
 			pfree(exttable);
 	}
