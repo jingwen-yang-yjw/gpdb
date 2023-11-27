@@ -43,7 +43,6 @@ char
 GetMppExecuteOption(List *options)
 {
 	ListCell *lc = NULL;
-	ListCell *prev = NULL;
 	char *mpp_execute = NULL;
 	char exec_location = FTEXECLOCATION_NOT_DEFINED;
 
@@ -73,7 +72,6 @@ GetMppExecuteOption(List *options)
 
 			break;
 		}
-		prev = lc;
 	}
 
 	return exec_location;
