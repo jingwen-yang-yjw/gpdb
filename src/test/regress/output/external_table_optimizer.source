@@ -4958,7 +4958,7 @@ SELECT policytype, distkey FROM gp_distribution_policy WHERE localoid = 'ext_w_d
 (1 row)
 
 ALTER TABLE ext_w_dist SET DISTRIBUTED REPLICATED; -- ERROR
-ERROR:  SET DISTRIBUTED REPLICATED is not supported for external table.
+ERROR:  SET DISTRIBUTED REPLICATED is not supported for external table
 CREATE EXTERNAL WEB TABLE ext_r_dist(a int) EXECUTE 'printf ${GP_SEGMENT_ID}' FORMAT 'TEXT' DISTRIBUTED BY (a);
 ERROR:  readable external tables can't specify a DISTRIBUTED BY clause
 CREATE EXTERNAL WEB TABLE ext_r_dist(a int) EXECUTE 'printf ${GP_SEGMENT_ID}' FORMAT 'TEXT';
