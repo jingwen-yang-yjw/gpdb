@@ -937,8 +937,7 @@ SELECT c1, c2 FROM mpp_ft2 order by c1 limit 3;
   3 |  3
 (3 rows)
 
--- Simple query with OFFSET and LIMIT clause together is NOT pushed down.
--- Because it's unsafe to do offset and limit in multiple remote servers.
+-- Simple query with OFFSET and LIMIT clause together is pushed down.
 EXPLAIN (VERBOSE, COSTS OFF)
 SELECT c1, c2 FROM mpp_ft2 order by c1 offset 2 limit 3;
                                           QUERY PLAN                                           
@@ -948,12 +947,10 @@ SELECT c1, c2 FROM mpp_ft2 order by c1 offset 2 limit 3;
    ->  Gather Motion 2:1  (slice1; segments: 2)
          Output: c1, c2
          Merge Key: c1
-         ->  Limit
+         ->  Foreign Scan on public.mpp_ft2
                Output: c1, c2
-               ->  Foreign Scan on public.mpp_ft2
-                     Output: c1, c2
-                     Remote SQL: SELECT c1, c2 FROM "MPP_S 1"."T 2" ORDER BY c1 ASC NULLS LAST
- Optimizer: Postgres query optimizer
+               Remote SQL: SELECT c1, c2 FROM "MPP_S 1"."T 2" ORDER BY c1 ASC NULLS LAST LIMIT (2::bigint + 3::bigint)
+ Optimizer: Postgres-based planner
  Settings: gp_enable_minmax_optimization = 'off'
 (12 rows)
 
@@ -964,6 +961,30 @@ SELECT c1, c2 FROM mpp_ft2 order by c1 offset 2 limit 3;
   4 |  4
   5 |  5
 (3 rows)
+
+-- Simple query with only OFFSET clause is NOT pushed down.
+EXPLAIN (VERBOSE, COSTS OFF)
+SELECT c1, c2 FROM mpp_ft2 order by c1 offset 998;
+                                       QUERY PLAN                                        
+-----------------------------------------------------------------------------------------
+ Limit
+   Output: c1, c2
+   ->  Gather Motion 2:1  (slice1; segments: 2)
+         Output: c1, c2
+         Merge Key: c1
+         ->  Foreign Scan on public.mpp_ft2
+               Output: c1, c2
+               Remote SQL: SELECT c1, c2 FROM "MPP_S 1"."T 2" ORDER BY c1 ASC NULLS LAST
+ Optimizer: Postgres-based planner
+ Settings: gp_enable_minmax_optimization = 'off'
+(10 rows)
+
+SELECT c1, c2 FROM mpp_ft2 order by c1 offset 998;
+  c1  | c2 
+------+----
+  999 |  9
+ 1000 |  0
+(2 rows)
 
 -- Query with aggregates and limit clause together is NOT pushed down.
 -- Because it's unsafe to do partial aggregate and limit in multiple remote servers.
