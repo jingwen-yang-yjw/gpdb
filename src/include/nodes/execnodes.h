@@ -458,7 +458,9 @@ typedef struct ResultRelInfo
 	struct FdwRoutine *ri_FdwRoutine;
 
 	/* available to save private state of FDW */
-	void	   *ri_FdwState;
+	void	   *ri_FdwState;					/* normal INSERT/UPDATE/DELETE */
+	void	   *ri_FdwState_SplitUpdate_insert; /* for INSERT sub-operation of SplitUpdate */
+	void	   *ri_FdwState_SplitUpdate_delete; /* for DELETE sub-operation of SplitUpdate */
 
 	/* true when modifying foreign table directly */
 	bool		ri_usesFdwDirectModify;

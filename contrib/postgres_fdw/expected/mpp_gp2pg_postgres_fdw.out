@@ -1119,27 +1119,68 @@ SELECT * FROM mpp_dist t1 JOIN mpp_dist t2 ON t1.c1 = t2.c1 ORDER BY t1.c1;
   3 |  3 |  3 |  3
 (3 rows)
 
-EXPLAIN (VERBOSE, COSTS OFF) UPDATE mpp_dist SET c1 = 1;
-ERROR:  Greenplum don't support update distributed key of distributed foreign table. (pathnode.c:LINE)
-UPDATE mpp_dist SET c1 = 1;
-ERROR:  Greenplum don't support update distributed key of distributed foreign table. (pathnode.c:LINE)
-EXPLAIN (VERBOSE, COSTS OFF) UPDATE mpp_dist SET c2 = 2;
-                      QUERY PLAN                       
--------------------------------------------------------
- Update on public.mpp_dist
-   ->  Foreign Update on public.mpp_dist
-         Remote SQL: UPDATE "MPP_S 1"."T 1" SET c2 = 2
- Optimizer: Postgres-based planner
- Settings: gp_enable_minmax_optimization = 'off'
-(5 rows)
+-- UPDATE distribution key
+SELECT *, gp_segment_id FROM mpp_dist ORDER BY c1;
+ c1 | c2 | gp_segment_id 
+----+----+---------------
+  1 |  1 |             1
+  2 |  2 |             0
+  3 |  3 |             0
+(3 rows)
 
-UPDATE mpp_dist SET c2 = 2;
+EXPLAIN (VERBOSE, COSTS OFF) UPDATE mpp_dist SET c1 = c1 + 1;
+                                     QUERY PLAN                                      
+-------------------------------------------------------------------------------------
+ Update on public.mpp_dist
+   Remote SQL: INSERT INTO "MPP_S 1"."T 1"(c1, c2) VALUES ($1, $2)
+   Remote SQL: DELETE FROM "MPP_S 1"."T 1" WHERE ctid = $1
+   ->  Explicit Redistribute Motion 2:2  (slice1; segments: 2)
+         Output: ((c1 + 1)), c2, ctid, gp_segment_id, (DMLAction)
+         ->  Split
+               Output: ((c1 + 1)), c2, ctid, gp_segment_id, DMLAction
+               ->  Foreign Scan on public.mpp_dist
+                     Output: (c1 + 1), c2, ctid, gp_segment_id
+                     Remote SQL: SELECT c1, c2, ctid FROM "MPP_S 1"."T 1" FOR UPDATE
+ Optimizer: Postgres-based planner
+ Settings: gp_enable_minmax_optimization = 'off', optimizer = 'off'
+(11 rows)
+
+UPDATE mpp_dist SET c1 = c1 + 1;
+SELECT *, gp_segment_id FROM mpp_dist ORDER BY c1;
+ c1 | c2 | gp_segment_id 
+----+----+---------------
+  2 |  1 |             0
+  3 |  2 |             0
+  4 |  3 |             0
+(3 rows)
+
+EXPLAIN (VERBOSE, COSTS OFF) UPDATE mpp_dist SET c2 = 2 RETURNING tableoid::regclass;
+                             QUERY PLAN                             
+--------------------------------------------------------------------
+ Gather Motion 2:1  (slice1; segments: 2)
+   Output: ((tableoid)::regclass)
+   ->  Update on public.mpp_dist
+         Output: (tableoid)::regclass
+         ->  Foreign Update on public.mpp_dist
+               Remote SQL: UPDATE "MPP_S 1"."T 1" SET c2 = 2
+ Optimizer: Postgres-based planner
+ Settings: gp_enable_minmax_optimization = 'off', optimizer = 'off'
+(8 rows)
+
+UPDATE mpp_dist SET c2 = 2 RETURNING tableoid::regclass;
+ tableoid 
+----------
+ mpp_dist
+ mpp_dist
+ mpp_dist
+(3 rows)
+
 SELECT * FROM mpp_dist ORDER BY c1;
  c1 | c2 
 ----+----
-  1 |  2
   2 |  2
   3 |  2
+  4 |  2
 (3 rows)
 
 DELETE FROM mpp_dist;

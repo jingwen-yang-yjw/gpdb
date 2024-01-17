@@ -7358,7 +7358,7 @@ UPDATE rem1 set f1 = 10;          -- all columns should be transmitted
  Update on public.rem1
    Remote SQL: UPDATE public.loc1 SET f1 = $2, f2 = $3 WHERE ctid = $1
    ->  Foreign Scan on public.rem1
-         Output: 10, f2, ctid, rem1.*, gp_segment_id
+         Output: 10, f2, ctid, rem1.*
          Remote SQL: SELECT f1, f2, ctid FROM public.loc1 FOR UPDATE
  Optimizer: Postgres query optimizer
  Settings: constraint_exclusion = 'off', optimizer = 'off'
@@ -7625,7 +7625,7 @@ UPDATE rem1 set f2 = '';          -- can't be pushed down
  Update on public.rem1
    Remote SQL: UPDATE public.loc1 SET f1 = $2, f2 = $3 WHERE ctid = $1
    ->  Foreign Scan on public.rem1
-         Output: f1, ''::text, ctid, rem1.*, gp_segment_id
+         Output: f1, ''::text, ctid, rem1.*
          Remote SQL: SELECT f1, f2, ctid FROM public.loc1 FOR UPDATE
  Optimizer: Postgres query optimizer
  Settings: constraint_exclusion = 'off', optimizer = 'off'
@@ -7653,7 +7653,7 @@ UPDATE rem1 set f2 = '';          -- can't be pushed down
  Update on public.rem1
    Remote SQL: UPDATE public.loc1 SET f2 = $2 WHERE ctid = $1 RETURNING f1, f2
    ->  Foreign Scan on public.rem1
-         Output: f1, ''::text, ctid, rem1.*, gp_segment_id
+         Output: f1, ''::text, ctid, rem1.*
          Remote SQL: SELECT f1, f2, ctid FROM public.loc1 FOR UPDATE
  Optimizer: Postgres query optimizer
  Settings: constraint_exclusion = 'off', optimizer = 'off'
@@ -7693,7 +7693,7 @@ DELETE FROM rem1;                 -- can't be pushed down
  Delete on public.rem1
    Remote SQL: DELETE FROM public.loc1 WHERE ctid = $1
    ->  Foreign Scan on public.rem1
-         Output: ctid, rem1.*, gp_segment_id
+         Output: ctid, rem1.*
          Remote SQL: SELECT f1, f2, ctid FROM public.loc1 FOR UPDATE
  Optimizer: Postgres query optimizer
  Settings: constraint_exclusion = 'off', optimizer = 'off'
@@ -7721,7 +7721,7 @@ DELETE FROM rem1;                 -- can't be pushed down
  Delete on public.rem1
    Remote SQL: DELETE FROM public.loc1 WHERE ctid = $1 RETURNING f1, f2
    ->  Foreign Scan on public.rem1
-         Output: ctid, rem1.*, gp_segment_id
+         Output: ctid, rem1.*
          Remote SQL: SELECT f1, f2, ctid FROM public.loc1 FOR UPDATE
  Optimizer: Postgres query optimizer
  Settings: constraint_exclusion = 'off', optimizer = 'off'

@@ -1819,6 +1819,110 @@ postgresAddForeignUpdateTargets(Query *parsetree,
 }
 
 /*
+ * SplitUpdate split UPDATE to INSERT and DELETE sub-operation.
+ * If UPDATE is SplitUpdate, we need two fdw_private list actually.
+ * One is for INSERT sub-operation of SplitUpdate,
+ * the other one is for DELETE sub-operation of SplitUpdate.
+ */
+static List *
+make_split_update_plan_for_foreign_table(PlannerInfo *root,
+						  ModifyTable *plan,
+						  Index resultRelation,
+						  int subplan_index)
+{
+	RangeTblEntry *rte = planner_rt_fetch(resultRelation, root);
+	Relation	rel;
+	StringInfoData insert_sql, delete_sql;
+	List	   *targetAttrs = NIL;
+	List	   *withCheckOptionList = NIL;
+	List	   *returningList = NIL;
+	List	   *retrieved_attrs_for_insert = NIL, *retrieved_attrs_for_delete = NIL;
+	bool		doNothing = false;
+
+	initStringInfo(&insert_sql);
+	initStringInfo(&delete_sql);
+
+	/*
+	 * Core code already has some lock on each rel being planned, so we can
+	 * use NoLock here.
+	 */
+	rel = table_open(rte->relid, NoLock);
+
+	/*
+	 * For SplitUpdate, we split UPDATE to INSERT and DELETE sub-operation.
+	 * So we need to transmit all columns that are defined in the foreign table
+	 * for INSERT.
+	 */
+	{
+		TupleDesc	tupdesc = RelationGetDescr(rel);
+		int			attnum;
+
+		for (attnum = 1; attnum <= tupdesc->natts; attnum++)
+		{
+			Form_pg_attribute attr = TupleDescAttr(tupdesc, attnum - 1);
+
+			if (!attr->attisdropped)
+				targetAttrs = lappend_int(targetAttrs, attnum);
+		}
+	}
+
+	/*
+	 * Extract the relevant WITH CHECK OPTION list if any.
+	 */
+	if (plan->withCheckOptionLists)
+		withCheckOptionList = (List *) list_nth(plan->withCheckOptionLists,
+												subplan_index);
+
+	/*
+	 * Extract the relevant RETURNING list if any.
+	 */
+	if (plan->returningLists)
+		returningList = (List *) list_nth(plan->returningLists, subplan_index);
+
+	/*
+	 * ON CONFLICT DO UPDATE and DO NOTHING case with inference specification
+	 * should have already been rejected in the optimizer, as presently there
+	 * is no way to recognize an arbiter index on a foreign table.  Only DO
+	 * NOTHING is supported without an inference specification.
+	 */
+	if (plan->onConflictAction == ONCONFLICT_NOTHING)
+		doNothing = true;
+	else if (plan->onConflictAction != ONCONFLICT_NONE)
+		elog(ERROR, "unexpected ON CONFLICT specification: %d",
+			 (int) plan->onConflictAction);
+
+	/*
+	 * Construct the two Remote SQL command string.
+	 * 1. INSERT remote SQL
+	 * 2. DELETE remote SQL
+	 * We only need to deparse returningList for INSERT sub-operation.
+	 */
+	deparseInsertSql(&insert_sql, rte, resultRelation, rel,
+					 targetAttrs, doNothing,
+					 withCheckOptionList, returningList,
+					 &retrieved_attrs_for_insert);
+	deparseDeleteSql(&delete_sql, rte, resultRelation, rel,
+					 NIL,
+					 &retrieved_attrs_for_delete);
+
+	table_close(rel, NoLock);
+
+	/*
+	 * Build the fdw_private list that will be available to the executor.
+	 * Items in the list must match enum FdwModifyPrivateIndex, above.
+	 */
+	List *fdw_private_for_insert = list_make4(makeString(insert_sql.data),
+											  targetAttrs,
+											  makeInteger((retrieved_attrs_for_insert != NIL)),
+											  retrieved_attrs_for_insert);
+	List *fdw_private_for_delete = list_make4(makeString(delete_sql.data),
+											  NIL,
+											  makeInteger((retrieved_attrs_for_delete != NIL)),
+											  retrieved_attrs_for_delete);
+	return list_concat(fdw_private_for_insert, fdw_private_for_delete);
+}
+
+/*
  * postgresPlanForeignModify
  *		Plan an insert/update/delete operation on a foreign table
  */
@@ -1837,6 +1941,15 @@ postgresPlanForeignModify(PlannerInfo *root,
 	List	   *returningList = NIL;
 	List	   *retrieved_attrs = NIL;
 	bool		doNothing = false;
+
+	if (operation == CMD_UPDATE)
+	{
+		/* If it is SplitUpdate node, handle it spcifically. */
+		bool	is_split_update = false;
+		is_split_update = (bool) lfirst_int(list_head(plan->isSplitUpdates));
+		if (is_split_update)
+			return make_split_update_plan_for_foreign_table(root, plan, resultRelation, subplan_index);
+	}
 
 	initStringInfo(&sql);
 
@@ -1954,6 +2067,66 @@ postgresPlanForeignModify(PlannerInfo *root,
 					  retrieved_attrs);
 }
 
+static void
+begin_foreign_modify_for_split_update(ModifyTableState *mtstate,
+						   ResultRelInfo *resultRelInfo,
+						   List *fdw_private,
+						   int subplan_index)
+{
+	PgFdwModifyState *fmstate_for_insert, *fmstate_for_delete;
+	char	   *query_for_insert, *query_for_delete;
+	List	   *target_attrs_for_insert, *target_attrs_for_delete;
+	bool		has_returning_for_insert, has_returning_for_delete;
+	List	   *retrieved_attrs_for_insert, *retrieved_attrs_for_delete;
+	RangeTblEntry *rte;
+
+	int 	offset = list_length(fdw_private) / 2;
+	/* Deconstruct fdw_private data. */
+	query_for_insert = strVal(list_nth(fdw_private,
+							  FdwModifyPrivateUpdateSql));
+	target_attrs_for_insert = (List *) list_nth(fdw_private,
+												FdwModifyPrivateTargetAttnums);
+	has_returning_for_insert = intVal(list_nth(fdw_private,
+											   FdwModifyPrivateHasReturning));
+	retrieved_attrs_for_insert = (List *) list_nth(fdw_private,
+												   FdwModifyPrivateRetrievedAttrs);
+	query_for_delete = strVal(list_nth(fdw_private,
+									   FdwModifyPrivateUpdateSql + offset));
+	target_attrs_for_delete = (List *) list_nth(fdw_private,
+												FdwModifyPrivateTargetAttnums + offset);
+	has_returning_for_delete = intVal(list_nth(fdw_private,
+											   FdwModifyPrivateHasReturning + offset));
+	retrieved_attrs_for_delete = (List *) list_nth(fdw_private,
+												   FdwModifyPrivateRetrievedAttrs + offset);
+
+
+	/* Find RTE. */
+	rte = exec_rt_fetch(resultRelInfo->ri_RangeTableIndex,
+						mtstate->ps.state);
+
+	/* Construct an execution state. */
+	fmstate_for_insert = create_foreign_modify(mtstate->ps.state,
+									rte,
+									resultRelInfo,
+									CMD_INSERT,
+									mtstate->mt_plans[subplan_index]->plan,
+									query_for_insert,
+									target_attrs_for_insert,
+									has_returning_for_insert,
+									retrieved_attrs_for_insert);
+	fmstate_for_delete = create_foreign_modify(mtstate->ps.state,
+									rte,
+									resultRelInfo,
+									CMD_DELETE,
+									mtstate->mt_plans[subplan_index]->plan,
+									query_for_delete,
+									target_attrs_for_delete,
+									has_returning_for_delete,
+									retrieved_attrs_for_delete);
+	resultRelInfo->ri_FdwState_SplitUpdate_insert = fmstate_for_insert;
+	resultRelInfo->ri_FdwState_SplitUpdate_delete = fmstate_for_delete;
+}
+
 /*
  * postgresBeginForeignModify
  *		Begin an insert/update/delete operation on a foreign table
@@ -1978,6 +2151,18 @@ postgresBeginForeignModify(ModifyTableState *mtstate,
 	 */
 	if (eflags & EXEC_FLAG_EXPLAIN_ONLY)
 		return;
+
+	/* If it's SplitUpdate, we need to store two FdwState. */
+	if (mtstate->operation == CMD_UPDATE)
+	{
+		bool	is_split_update = false;
+		is_split_update = mtstate->mt_isSplitUpdates[subplan_index];
+		if (is_split_update)
+		{
+			begin_foreign_modify_for_split_update(mtstate, resultRelInfo, fdw_private, subplan_index);
+			return;
+		}
+	}
 
 	/* Deconstruct fdw_private data. */
 	query = strVal(list_nth(fdw_private,
@@ -2019,6 +2204,10 @@ postgresExecForeignInsert(EState *estate,
 {
 	PgFdwModifyState *fmstate = (PgFdwModifyState *) resultRelInfo->ri_FdwState;
 	TupleTableSlot *rslot;
+
+	/* fmstate will be NULL when current insert is a part of SplitUpdate. */
+	if (!fmstate)
+		fmstate = (PgFdwModifyState *) resultRelInfo->ri_FdwState_SplitUpdate_insert;
 
 	/*
 	 * If the fmstate has aux_fmstate set, use the aux_fmstate (see
@@ -2387,6 +2576,15 @@ postgresPlanDirectModify(PlannerInfo *root,
 	 */
 	if (operation != CMD_UPDATE && operation != CMD_DELETE)
 		return false;
+
+	/* It's unsafe to modify a foreign table directly if it's SplitUpdate. */
+	if (operation == CMD_UPDATE)
+	{
+		bool    is_split_update = false;
+		is_split_update = (bool) lfirst_int(list_head(plan->isSplitUpdates));
+		if (is_split_update)
+			return false;
+	}
 
 	/*
 	 * It's unsafe to modify a foreign table directly if there are any local
@@ -2808,9 +3006,26 @@ postgresExplainForeignModify(ModifyTableState *mtstate,
 {
 	if (es->verbose)
 	{
+		/* If it's SplitUpdate, we have two Remote SQL. */
+		if (mtstate->operation == CMD_UPDATE)
+		{
+			bool    is_split_update = false;
+			is_split_update = mtstate->mt_isSplitUpdates[subplan_index];
+			if (is_split_update)
+			{
+				int offset = list_length(fdw_private) / 2;
+				char *insert_sql = strVal(list_nth(fdw_private,
+										  		   FdwModifyPrivateUpdateSql));
+				char *delete_sql = strVal(list_nth(fdw_private,
+										  		   FdwModifyPrivateUpdateSql + offset));
+				ExplainPropertyText("Remote SQL", insert_sql, es);
+				ExplainPropertyText("Remote SQL", delete_sql, es);
+				return;
+			}
+		}
+
 		char	   *sql = strVal(list_nth(fdw_private,
 										  FdwModifyPrivateUpdateSql));
-
 		ExplainPropertyText("Remote SQL", sql, es);
 	}
 }
@@ -3908,6 +4123,29 @@ execute_foreign_modify(EState *estate,
 	Assert(operation == CMD_INSERT ||
 		   operation == CMD_UPDATE ||
 		   operation == CMD_DELETE);
+
+	/*
+	 * When UPDATE is SplitUpdate, we need two fmstate.
+	 * One is for INSERT, the other one is for DELETE.
+	 */
+	if (!fmstate)
+	{
+		if (operation == CMD_INSERT)
+		{
+			/* INSERT of SplitUpdate */
+			fmstate = (PgFdwModifyState *) resultRelInfo->ri_FdwState_SplitUpdate_insert;
+		}
+		else if (operation == CMD_DELETE)
+		{
+			/* DELETE of SplitUpdate */
+			fmstate = (PgFdwModifyState *) resultRelInfo->ri_FdwState_SplitUpdate_delete;
+		}
+		else
+		{
+			/* ERROR */
+			ereport(ERROR, errmsg("FDW modify state can NOT be NULL while executing."));
+		}
+	}
 
 	/* Set up the prepared statement on the remote server, if we didn't yet */
 	if (!fmstate->p_name)

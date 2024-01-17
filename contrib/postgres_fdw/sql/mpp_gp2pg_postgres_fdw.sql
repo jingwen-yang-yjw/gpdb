@@ -261,11 +261,14 @@ SELECT * FROM mpp_dist ORDER BY c1;
 EXPLAIN (VERBOSE, COSTS OFF) SELECT * FROM mpp_dist t1 JOIN mpp_dist t2 ON t1.c1 = t2.c1 ORDER BY t1.c1;
 SELECT * FROM mpp_dist t1 JOIN mpp_dist t2 ON t1.c1 = t2.c1 ORDER BY t1.c1;
 
-EXPLAIN (VERBOSE, COSTS OFF) UPDATE mpp_dist SET c1 = 1;
-UPDATE mpp_dist SET c1 = 1;
+-- UPDATE distribution key
+SELECT *, gp_segment_id FROM mpp_dist ORDER BY c1;
+EXPLAIN (VERBOSE, COSTS OFF) UPDATE mpp_dist SET c1 = c1 + 1;
+UPDATE mpp_dist SET c1 = c1 + 1;
+SELECT *, gp_segment_id FROM mpp_dist ORDER BY c1;
 
-EXPLAIN (VERBOSE, COSTS OFF) UPDATE mpp_dist SET c2 = 2;
-UPDATE mpp_dist SET c2 = 2;
+EXPLAIN (VERBOSE, COSTS OFF) UPDATE mpp_dist SET c2 = 2 RETURNING tableoid::regclass;
+UPDATE mpp_dist SET c2 = 2 RETURNING tableoid::regclass;
 
 SELECT * FROM mpp_dist ORDER BY c1;
 

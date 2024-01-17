@@ -3308,6 +3308,21 @@ ExecInitModifyTable(ModifyTable *node, EState *estate, int eflags)
 						 * a wholerow attribute.
 						 */
 						j->jf_junkAttNo = ExecFindJunkAttribute(j, "wholerow");
+
+						if (resultRelInfo->ri_RelationDesc->rd_cdbpolicy->ptype == POLICYTYPE_PARTITIONED)
+						{
+							/* Extra GPDB junk columns */
+							resultRelInfo->ri_segid_attno = ExecFindJunkAttribute(j, "gp_segment_id");
+							if (!AttributeNumberIsValid(resultRelInfo->ri_segid_attno))
+								elog(ERROR, "could not find junk gp_segment_id column");
+
+							if (operation == CMD_UPDATE && mtstate->mt_isSplitUpdates[i])
+							{
+								resultRelInfo->ri_action_attno = ExecFindJunkAttribute(j, "DMLAction");
+								if (!AttributeNumberIsValid(resultRelInfo->ri_action_attno))
+									elog(ERROR, "could not find junk action column");
+							}
+						}
 					}
 					else
 					{
