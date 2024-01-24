@@ -1436,6 +1436,8 @@ static int get_hostinfo_index(EState *estate)
 		}
 	}
 
+	qe_index_in_gang = index;
+
 	if (index < 0)
 		ereport(ERROR, (errmsg("No valid slice number")));
 

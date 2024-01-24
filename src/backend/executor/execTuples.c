@@ -149,7 +149,10 @@ tts_virtual_getsysattr(TupleTableSlot *slot, int attnum, bool *isnull)
 	{
 		*isnull = false;
 
-		return Int32GetDatum(GpIdentity.segindex);
+		if (qe_index_in_gang != UNSET_QE_INDEX)
+			return Int32GetDatum(qe_index_in_gang);
+		else
+			return Int32GetDatum(GpIdentity.segindex);
 	}
 
 	Assert(!TTS_EMPTY(slot));

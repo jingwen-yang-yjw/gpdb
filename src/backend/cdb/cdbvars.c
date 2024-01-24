@@ -351,6 +351,11 @@ int			currentSliceId = UNSET_SLICE_ID;	/* used by elog to show the
 
 bool		gp_cost_hashjoin_chainwalk = false;
 
+int			qe_index_in_gang = UNSET_QE_INDEX;	/* used by foreign table when
+												 * the number of remote servers
+												 * is larger than the number of
+												 * segments.*/
+
 /* ----------------
  * This variable is initialized by the postmaster from command line arguments
  *

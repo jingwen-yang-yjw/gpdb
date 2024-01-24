@@ -670,7 +670,10 @@ heap_getsysattr(HeapTuple tup, int attnum, TupleDesc tupleDesc, bool *isnull)
 			result = ObjectIdGetDatum(tup->t_tableOid);
 			break;
 		case GpSegmentIdAttributeNumber:                       /*CDB*/
-			result = Int32GetDatum(GpIdentity.segindex);
+			if (qe_index_in_gang != UNSET_QE_INDEX)
+				result = Int32GetDatum(qe_index_in_gang);
+			else
+				result = Int32GetDatum(GpIdentity.segindex);
 			break;
 		default:
 			elog(ERROR, "invalid attnum: %d", attnum);

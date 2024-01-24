@@ -309,6 +309,9 @@ standard_ExecutorStart(QueryDesc *queryDesc, int eflags)
 		!(eflags & EXEC_FLAG_EXPLAIN_ONLY))
 		ExecCheckXactReadOnly(queryDesc->plannedstmt);
 
+	/* Always initialize qe_index_in_gang in standard_ExecutorStart(). */
+	qe_index_in_gang = UNSET_QE_INDEX;
+
 	/*
 	 * Build EState, switch into per-query memory context for startup.
 	 */

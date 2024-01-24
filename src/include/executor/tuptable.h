@@ -419,7 +419,10 @@ slot_getsysattr(TupleTableSlot *slot, int attnum, bool *isnull)
 	else if (attnum == GpSegmentIdAttributeNumber)
 	{
 		*isnull = false;
-		return Int32GetDatum(GpIdentity.segindex);
+		if (qe_index_in_gang != UNSET_QE_INDEX)
+			return Int32GetDatum(qe_index_in_gang);
+		else
+			return Int32GetDatum(GpIdentity.segindex);
 	}
 
 	/* Fetch the system attribute from the underlying tuple. */

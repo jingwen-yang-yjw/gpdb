@@ -863,24 +863,28 @@ ExecDelete(ModifyTableState *mtstate,
 		*tupleDeleted = false;
 
 	/*
+	 * get information on the (current) result relation
+	 */
+	resultRelInfo = estate->es_result_relation_info;
+	resultRelationDesc = resultRelInfo->ri_RelationDesc;
+
+	/*
 	 * Sanity check the distribution of the tuple to prevent
 	 * potential data corruption in case users manipulate data
 	 * incorrectly (e.g. insert data on incorrect segment through
 	 * utility mode) or there is bug in code, etc.
+	 *
+	 * We do NOT check this for foreign table. Because the data of
+	 * foreign table might be located in more locations.
 	 */
-	if (segid != GpIdentity.segindex)
+	if (resultRelationDesc->rd_rel->relkind != RELKIND_FOREIGN_TABLE &&
+		segid != GpIdentity.segindex)
 		elog(ERROR,
 			 "distribution key of the tuple (%u, %u) doesn't belong to "
 			 "current segment (actually from seg%d)",
 			 BlockIdGetBlockNumber(&(tupleid->ip_blkid)),
 			 tupleid->ip_posid,
 			 segid);
-
-	/*
-	 * get information on the (current) result relation
-	 */
-	resultRelInfo = estate->es_result_relation_info;
-	resultRelationDesc = resultRelInfo->ri_RelationDesc;
 
 	/* BEFORE ROW DELETE Triggers */
 	/*
