@@ -115,6 +115,44 @@ SeparateOutNumSegments(List **options)
 	return num_segments;
 }
 
+/* Get and separate out the server_type option. */
+char
+SeparateOutServerType(List **options)
+{
+	ListCell *lc = NULL;
+	ListCell *prev = NULL;
+	char *server_type_option = NULL;
+	char server_type = FTSERVERTYPE_NOT_DEFINED;
+
+	foreach(lc, *options)
+	{
+		DefElem    *def = (DefElem *) lfirst(lc);
+
+		if (strcmp(def->defname, "server_type") == 0)
+		{
+			server_type_option = defGetString(def);
+
+			if (pg_strcasecmp(server_type_option, "single") == 0)
+				server_type = FTSERVERTYPE_SINGLE;
+			else if (pg_strcasecmp(server_type_option, "multiple") == 0)
+				server_type = FTSERVERTYPE_MULTIPLE;
+			else
+			{
+				ereport(ERROR,
+						(errcode(ERRCODE_SYNTAX_ERROR),
+						 errmsg("\"%s\" is not a valid server_type value",
+								server_type_option)));
+			}
+
+			*options = list_delete_cell(*options, lc, prev);
+			break;
+		}
+		prev = lc;
+	}
+
+	return server_type;
+}
+
 /*
  * GetForeignDataWrapper -	look up the foreign-data wrapper by OID.
  */
@@ -270,6 +308,8 @@ GetForeignServerExtended(Oid serverid, bits16 flags)
 	{
 		server->num_segments = getgpsegmentCount();
 	}
+
+	server->server_type = SeparateOutServerType(&server->options);
 
 	ReleaseSysCache(tp);
 

@@ -748,7 +748,8 @@ create_two_stage_paths(PlannerInfo *root, cdb_agg_planning_context *ctx,
 	 * we try to add two-phase aggregate path for foreign table
 	 * and call FDW routine to consider partial aggregate pushdown.
 	 */
-	if (input_rel->exec_location == FTEXECLOCATION_ALL_SEGMENTS)
+	if (input_rel->exec_location == FTEXECLOCATION_ALL_SEGMENTS
+		&& input_rel->server_type != FTSERVERTYPE_SINGLE)
 	{
 		ctx->partial_rel->serverid = input_rel->serverid;
 		ctx->partial_rel->userid = input_rel->userid;

@@ -229,6 +229,7 @@ build_simple_rel(PlannerInfo *root, int relid, RelOptInfo *parent)
 	rel->userid = rte->checkAsUser;
 	rel->useridiscurrent = false;
 	rel->exec_location = FTEXECLOCATION_NOT_DEFINED;
+	rel->server_type = FTSERVERTYPE_NOT_DEFINED;
 	rel->fdwroutine = NULL;
 	rel->fdw_private = NULL;
 	rel->unique_for_rels = NIL;

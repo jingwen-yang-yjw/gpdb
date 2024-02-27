@@ -204,6 +204,11 @@ transformGenericOptions(Oid catalogId,
 	{
 		SeparateOutNumSegments(&resultOptions);
 	}
+
+	if (catalogId == ForeignServerRelationId)
+	{
+		SeparateOutServerType(&resultOptions);
+	}
 	
 	if (OidIsValid(fdwvalidator))
 	{

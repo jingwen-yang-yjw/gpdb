@@ -54,6 +54,7 @@ typedef struct ForeignServer
 	List	   *options;		/* srvoptions as DefElem list */
 	char		exec_location;  /* execute on COORDINATOR, ANY or ALL SEGMENTS, Greenplum MPP specific */
 	int32		num_segments;	/* the number of segments of the foreign cluster */
+	char		server_type;	/* the type of server is SINGLE or MULTIPLE, Greenplum MPP specific */
 } ForeignServer;
 
 typedef struct UserMapping
@@ -81,6 +82,7 @@ typedef struct ForeignTable
 
 extern char SeparateOutMppExecute(List **options);
 extern int32 SeparateOutNumSegments(List **options);
+extern char SeparateOutServerType(List **options);
 extern ForeignServer *GetForeignServer(Oid serverid);
 extern ForeignServer *GetForeignServerExtended(Oid serverid,
 											   bits16 flags);
@@ -108,5 +110,13 @@ extern Oid	get_foreign_server_oid(const char *servername, bool missing_ok);
 #define FTEXECLOCATION_COORDINATOR 'c'
 #define FTEXECLOCATION_ALL_SEGMENTS 's'
 #define FTEXECLOCATION_NOT_DEFINED 'n'
+
+/* ----------------
+ *		compiler constants for ForeignTable's server type
+ * ----------------
+ */
+#define FTSERVERTYPE_SINGLE 's'
+#define FTSERVERTYPE_MULTIPLE 'm'
+#define FTSERVERTYPE_NOT_DEFINED 'n'
 
 #endif							/* FOREIGN_H */

@@ -358,7 +358,8 @@ add_paths_to_joinrel(PlannerInfo *root,
 	 * permissions as, give the FDW a chance to push down joins.
 	 */
 	if (joinrel->fdwroutine &&
-		joinrel->fdwroutine->GetForeignJoinPaths)
+		joinrel->fdwroutine->GetForeignJoinPaths &&
+		joinrel->server_type != FTSERVERTYPE_SINGLE)
 	{
 		if(joinrel->exec_location != FTEXECLOCATION_ALL_SEGMENTS ||
 		   !joinrel->fdwroutine->IsMPPPlanNeeded || joinrel->fdwroutine->IsMPPPlanNeeded() == 0)

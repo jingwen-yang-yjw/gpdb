@@ -473,12 +473,14 @@ get_relation_info(PlannerInfo *root, Oid relationObjectId, bool inhparent,
 		rel->serverid = GetForeignServerIdByRelId(RelationGetRelid(relation));
 		rel->fdwroutine = GetFdwRoutineForRelation(relation, true);
 		rel->exec_location = GetForeignTable(RelationGetRelid(relation))->exec_location;
+		rel->server_type = GetForeignServer(rel->serverid)->server_type;
 	}
 	else
 	{
 		rel->serverid = InvalidOid;
 		rel->fdwroutine = NULL;
 		rel->exec_location = FTEXECLOCATION_NOT_DEFINED;
+		rel->server_type = FTSERVERTYPE_NOT_DEFINED;
 	}
 
 	/* Collect info about relation's foreign keys, if relevant */

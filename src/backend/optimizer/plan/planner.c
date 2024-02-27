@@ -2730,6 +2730,7 @@ grouping_planner(PlannerInfo *root, bool inheritance_update,
 	final_rel->useridiscurrent = current_rel->useridiscurrent;
 	final_rel->fdwroutine = current_rel->fdwroutine;
 	final_rel->exec_location = current_rel->exec_location;
+	final_rel->server_type = current_rel->server_type;
 
 	if (root->is_split_update)
 	{
@@ -3012,8 +3013,13 @@ grouping_planner(PlannerInfo *root, bool inheritance_update,
 	 */
 	if (final_rel->fdwroutine && final_rel->fdwroutine->GetForeignUpperPaths)
 	{
-		/* If FDW need MPP plan, we need to create two-phase limit path. */
 		if (final_rel->exec_location == FTEXECLOCATION_ALL_SEGMENTS &&
+				 final_rel->server_type == FTSERVERTYPE_SINGLE)
+		{
+			/* Do NOT pushdown */
+		}
+		/* If FDW need MPP plan, we need to create two-phase limit path. */
+		else if (final_rel->exec_location == FTEXECLOCATION_ALL_SEGMENTS &&
 			final_rel->fdwroutine->IsMPPPlanNeeded && final_rel->fdwroutine->IsMPPPlanNeeded() == 1)
 		{
 			RelOptInfo *pre_final_rel = makeNode(RelOptInfo);
@@ -3036,6 +3042,7 @@ grouping_planner(PlannerInfo *root, bool inheritance_update,
 			pre_final_rel->useridiscurrent = final_rel->useridiscurrent;
 			pre_final_rel->fdwroutine = final_rel->fdwroutine;
 			pre_final_rel->exec_location = final_rel->exec_location;
+			pre_final_rel->server_type = final_rel->server_type;
 
 			pre_final_rel->fdwroutine->GetForeignUpperPaths(root, UPPERREL_FINAL,
 															current_rel, pre_final_rel,
@@ -4623,6 +4630,7 @@ make_grouping_rel(PlannerInfo *root, RelOptInfo *input_rel,
 	grouped_rel->useridiscurrent = input_rel->useridiscurrent;
 	grouped_rel->fdwroutine = input_rel->fdwroutine;
 	grouped_rel->exec_location = input_rel->exec_location;
+	grouped_rel->server_type = input_rel->server_type;
 
 	return grouped_rel;
 }
@@ -4845,7 +4853,8 @@ create_ordinary_grouping_paths(PlannerInfo *root, RelOptInfo *input_rel,
 	 * let it consider adding ForeignPaths.
 	 */
 	if (grouped_rel->fdwroutine &&
-		grouped_rel->fdwroutine->GetForeignUpperPaths)
+		grouped_rel->fdwroutine->GetForeignUpperPaths &&
+		grouped_rel->server_type != FTSERVERTYPE_SINGLE)
 	{
 		if(grouped_rel->exec_location != FTEXECLOCATION_ALL_SEGMENTS ||
 		   !grouped_rel->fdwroutine->IsMPPPlanNeeded || grouped_rel->fdwroutine->IsMPPPlanNeeded() == 0)
@@ -5204,6 +5213,7 @@ create_window_paths(PlannerInfo *root,
 	window_rel->useridiscurrent = input_rel->useridiscurrent;
 	window_rel->fdwroutine = input_rel->fdwroutine;
 	window_rel->exec_location = input_rel->exec_location;
+	window_rel->server_type = input_rel->server_type;
 
 	/*
 	 * Consider computing window functions starting from the existing
@@ -5396,6 +5406,7 @@ create_distinct_paths(PlannerInfo *root,
 	distinct_rel->useridiscurrent = input_rel->useridiscurrent;
 	distinct_rel->fdwroutine = input_rel->fdwroutine;
 	distinct_rel->exec_location = input_rel->exec_location;
+	distinct_rel->server_type = input_rel->server_type;
 
 	if (CdbPathLocus_IsPartitioned(cheapest_input_path->locus))
 		numInputRowsTotal = cheapest_input_path->rows * CdbPathLocus_NumSegments(cheapest_input_path->locus);
@@ -5653,6 +5664,7 @@ create_ordered_paths(PlannerInfo *root,
 	ordered_rel->useridiscurrent = input_rel->useridiscurrent;
 	ordered_rel->fdwroutine = input_rel->fdwroutine;
 	ordered_rel->exec_location = input_rel->exec_location;
+	ordered_rel->server_type = input_rel->server_type;
 
 	foreach(lc, input_rel->pathlist)
 	{
@@ -8071,7 +8083,8 @@ create_partial_grouping_paths(PlannerInfo *root,
 	 * let it consider adding partially grouped ForeignPaths.
 	 */
 	if (partially_grouped_rel->fdwroutine &&
-		partially_grouped_rel->fdwroutine->GetForeignUpperPaths)
+		partially_grouped_rel->fdwroutine->GetForeignUpperPaths &&
+		partially_grouped_rel->server_type != FTSERVERTYPE_SINGLE)
 	{
 		FdwRoutine *fdwroutine = partially_grouped_rel->fdwroutine;
 
