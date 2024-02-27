@@ -211,6 +211,9 @@ InitPgFdwOptions(void)
 		/* hosts and ports are avaiable on server only */
 		{"multi_hosts", ForeignServerRelationId, false},
 		{"multi_ports", ForeignServerRelationId, false},
+		/* options for parallel SELECT */
+		{"partition_by", ForeignTableRelationId, false},
+		{"range", ForeignTableRelationId, false},
 		{NULL, InvalidOid, false}
 	};
 

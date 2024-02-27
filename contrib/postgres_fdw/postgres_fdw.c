@@ -46,6 +46,7 @@
 #include "utils/selfuncs.h"
 #include "cdb/cdbvars.h"
 #include "cdb/cdbgang.h"
+#include "utils/syscache.h"
 
 /* source-code-compatibility hacks for pull_varnos() API change */
 #define make_restrictinfo(a,b,c,d,e,f,g,h,i) make_restrictinfo_new(a,b,c,d,e,f,g,h,i)
@@ -510,6 +511,10 @@ static void apply_table_options(PgFdwRelationInfo *fpinfo);
 static void merge_fdw_options(PgFdwRelationInfo *fpinfo,
 							  const PgFdwRelationInfo *fpinfo_o,
 							  const PgFdwRelationInfo *fpinfo_i);
+char* get_real_filter(Oid oid, int qe_num, int qe_index, List *options);
+void replace_dummy_filter(char **modified_query, const char *origin_query, const char *real_filter);
+char *get_modified_query(const char* origin_query, Oid relid, char exec_location, char server_type,
+						 int qe_num, int qe_index, List *options);
 
 
 /*
@@ -1513,6 +1518,152 @@ static void rewrite_server_options(ForeignServer *server, int index)
 }
 
 /*
+ * Get real filter according to qe_index.
+ */
+char* get_real_filter(Oid reloid, int qe_num, int qe_index, List *options)
+{
+	ListCell   *lc = NULL;
+	char *partition_by = NULL, *range = NULL;
+	char *range_from = NULL, *range_to = NULL;
+	char *tmp = NULL;
+	int int_range_from = 0, int_range_to = 0;
+	StringInfoData result_filter;
+	initStringInfo(&result_filter);
+
+	foreach(lc, options)
+	{
+		DefElem    *d = (DefElem *) lfirst(lc);
+
+		if (strcmp(d->defname, "partition_by") == 0)
+			partition_by = pstrdup(defGetString(d));
+		else if (strcmp(d->defname, "range") == 0)
+			range = pstrdup(defGetString(d));
+	}
+
+	if (!partition_by || !range)
+		return result_filter.data;
+
+	/* replace column name if user defines */
+	HeapTuple	tuple = SearchSysCacheAttName(reloid, partition_by);
+	if (!tuple)
+	{
+		ereport(ERROR,
+				errmsg("Current foreign table doesn't have column named %s", partition_by));
+	}
+	Form_pg_attribute 	attTup = (Form_pg_attribute) GETSTRUCT(tuple);
+	List *column_options = GetForeignColumnOptions(reloid, attTup->attnum);
+	char *colname = NULL;
+	foreach(lc, column_options)
+	{
+		DefElem    *def = (DefElem *) lfirst(lc);
+
+		if (strcmp(def->defname, "column_name") == 0)
+		{
+			colname = defGetString(def);
+			break;
+		}
+	}
+	if (colname)
+		partition_by = (char *) quote_identifier(colname);
+	ReleaseSysCache(tuple);
+
+	/* Get range_from and range_to and we only support column with int type. */
+	tmp = strstr(range, ";");
+	range_from = (char *) palloc(strlen(range) - strlen(tmp));
+	range_to = (char *) palloc(strlen(tmp + 1));
+	strncpy(range_from, range, strlen(range) - strlen(tmp));
+	strncpy(range_to, tmp + 1, strlen(tmp + 1));
+	int_range_from = strtol(range_from, NULL, 10);
+	int_range_to = strtol(range_to, NULL, 10);
+
+	Assert(qe_index > -1 && qe_index < qe_num);
+	/* Build filter list */
+	if (qe_num == 1)
+	{
+		/* No operation */
+	}
+	else if (qe_num == 2)
+	{
+		if (qe_index == 0)
+			appendStringInfo(&result_filter, "(TRUE)");
+		else if (qe_index == 1)
+			appendStringInfo(&result_filter, "(%s is NULL)", partition_by);
+	}
+	else if (qe_num == 3)
+	{
+		int mid = int_range_from + (int_range_to - int_range_from) / 2;
+		if (qe_index == 0)
+			appendStringInfo(&result_filter, "(%s < %d)", partition_by, mid);
+		else if (qe_index == 1)
+			appendStringInfo(&result_filter, "(%s >= %d)", partition_by, mid);
+		else if (qe_index == 2)
+			appendStringInfo(&result_filter, "(%s is NULL)", partition_by);
+	}
+	else
+	{
+		int interval = (int_range_to - int_range_from) / (qe_num - 3) + 1;
+		int left_val = int_range_from + (qe_index - 1) * interval;
+		if (qe_index == 0)
+			appendStringInfo(&result_filter, "(%s < %d)", partition_by, int_range_from);
+		else if (qe_index == qe_num - 2)
+			appendStringInfo(&result_filter, "(%s >= %d)", partition_by, int_range_to);
+		else if (qe_index == qe_num - 1)
+			appendStringInfo(&result_filter, "(%s is NULL)", partition_by);
+		else if (left_val < int_range_to)
+			appendStringInfo(&result_filter, "((%s >= %d) AND (%s < %d))", partition_by,
+								left_val, partition_by, left_val + interval > int_range_to ? int_range_to : left_val + interval);
+		else
+			appendStringInfo(&result_filter, "(FALSE)");
+	}
+	return result_filter.data;
+}
+
+/*
+ * Using real_filter replaces dummy_filter in the origin_query.
+ * Here dummy_filter is "(TRUE)".
+ */
+void replace_dummy_filter(char **modified_query, const char *origin_query, const char *real_filter)
+{
+	char *dummy_filter = "(TRUE)";
+	int len_front = 0, len_origin = strlen(origin_query), len_dummy = strlen(dummy_filter), len_real = strlen(real_filter);
+	char *cur_pos = strstr(origin_query, "WHERE");
+
+	if (!cur_pos)
+		return;
+	cur_pos = strstr(cur_pos, "(TRUE)");
+	if (!cur_pos)
+		return;
+
+	*modified_query = (char *) palloc(len_origin + len_real - len_dummy + 1);
+	len_front = len_origin - strlen(cur_pos);
+	strncpy(*modified_query, origin_query, len_front);
+	strcpy(*modified_query + len_front, real_filter);
+	strcpy(*modified_query + len_front + len_real, cur_pos + len_dummy);
+}
+
+/*
+ * Only when exec_location == FTEXECLOCATION_ALL_SEGMENTS and server_type == FTSERVERTYPE_SINGLE,
+ * QE needs modified_query.
+ */
+char *get_modified_query(const char* origin_query, Oid relid, char exec_location, char server_type,
+						 int qe_num, int qe_index, List *options)
+{
+	char *modified_query = NULL;
+	char *real_filter = NULL;
+
+	if (exec_location != FTEXECLOCATION_ALL_SEGMENTS ||
+		server_type != FTSERVERTYPE_SINGLE)
+		return NULL;
+
+	real_filter = get_real_filter(relid, qe_num, qe_index, options);
+	if (!real_filter)
+		return NULL;
+
+	replace_dummy_filter(&modified_query, origin_query, real_filter);
+	return modified_query;
+}
+
+/*
  * postgresBeginForeignScan
  *		Initiate an executor scan of a foreign PostgreSQL table.
  */
@@ -1529,6 +1680,8 @@ postgresBeginForeignScan(ForeignScanState *node, int eflags)
 	UserMapping *user;
 	int			rtindex;
 	int			numParams;
+	char		*origin_query = NULL;
+	char		*modified_query = NULL;
 
 	/*
 	 * Do nothing in EXPLAIN (no ANALYZE) case.  node->fdw_state stays NULL.
@@ -1583,8 +1736,13 @@ postgresBeginForeignScan(ForeignScanState *node, int eflags)
 	fsstate->cursor_exists = false;
 
 	/* Get private info created by planner functions. */
-	fsstate->query = strVal(list_nth(fsplan->fdw_private,
-									 FdwScanPrivateSelectSql));
+	origin_query = strVal(list_nth(fsplan->fdw_private,
+										 FdwScanPrivateSelectSql));
+	if (Gp_role == GP_ROLE_EXECUTE)
+		modified_query = get_modified_query(origin_query, rte->relid, table->exec_location, server->server_type,
+											server->num_segments, get_hostinfo_index(estate), table->options);
+	fsstate->query = modified_query ? modified_query: origin_query;
+
 	fsstate->retrieved_attrs = (List *) list_nth(fsplan->fdw_private,
 												 FdwScanPrivateRetrievedAttrs);
 	fsstate->fetch_size = intVal(list_nth(fsplan->fdw_private,
@@ -2391,6 +2549,10 @@ postgresPlanDirectModify(PlannerInfo *root,
 		foreignrel = root->simple_rel_array[resultRelation];
 	rte = root->simple_rte_array[resultRelation];
 	fpinfo = (PgFdwRelationInfo *) foreignrel->fdw_private;
+
+	if (foreignrel->exec_location == FTEXECLOCATION_ALL_SEGMENTS &&
+		foreignrel->server_type == FTSERVERTYPE_SINGLE)
+		return false;
 
 	/*
 	 * It's unsafe to update a foreign table directly, if any expressions to

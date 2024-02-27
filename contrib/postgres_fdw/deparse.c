@@ -192,6 +192,8 @@ static void appendFunctionName(Oid funcid, deparse_expr_cxt *context);
 static Node *deparseSortGroupClause(Index ref, List *tlist, bool force_colno,
 									deparse_expr_cxt *context);
 
+void add_dummy_filter(StringInfo buf, RelOptInfo *rel, PlannerInfo *root, List *quals);
+
 /*
  * Helper functions
  */
@@ -1091,6 +1093,49 @@ build_tlist_to_deparse(RelOptInfo *foreignrel)
 }
 
 /*
+ * buf, root, exec_location, root, options
+ */
+void add_dummy_filter(StringInfo buf, RelOptInfo *rel, PlannerInfo *root, List *quals)
+{
+	/* Only when mpp_execute = 'all segments' and server_type = 'single', we need to add extra quals. */
+	if (rel->exec_location != FTEXECLOCATION_ALL_SEGMENTS || rel->server_type != FTSERVERTYPE_SINGLE)
+		return;
+
+	if (IS_SIMPLE_REL(rel))
+	{
+		ListCell *lc = NULL;
+		bool need_dummy_quals = false;
+
+		RangeTblEntry *rte = planner_rt_fetch(rel->relid, root);
+		ForeignTable *table = GetForeignTable(rte->relid);
+
+		foreach(lc, table->options)
+		{
+			DefElem    *def = (DefElem *) lfirst(lc);
+			if (strcmp(def->defname, "partition_by") == 0)
+			{
+				need_dummy_quals = true;
+				break;
+			}
+		}
+
+		if (!need_dummy_quals)
+			return;
+
+		if (quals)
+			appendStringInfoString(buf, " AND (TRUE)");
+		else
+			appendStringInfoString(buf, " WHERE (TRUE)");
+	}
+	else if (IS_JOIN_REL(rel) || IS_UPPER_REL(rel))
+	{
+		ereport(ERROR,
+				errmsg("joinrel and upperrel won't add foreign path when mpp_execute = 'all segments' \
+						and server_type = 'single'"));
+	}
+}
+
+/*
  * Deparse SELECT statement for given relation into buf.
  *
  * tlist contains the list of desired columns to be fetched from foreign server.
@@ -1157,6 +1202,9 @@ deparseSelectStmtForRel(StringInfo buf, PlannerInfo *root, RelOptInfo *rel,
 
 	/* Construct FROM and WHERE clauses */
 	deparseFromExpr(quals, &context);
+
+	/* Add dummy filter if mpp_execute = 'all segments' and server_type = 'single'. */
+	add_dummy_filter(buf, rel, root, quals);
 
 	if (IS_UPPER_REL(rel))
 	{
