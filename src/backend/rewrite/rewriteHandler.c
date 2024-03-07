@@ -1632,25 +1632,27 @@ rewriteTargetListUD(Query *parsetree, RangeTblEntry *target_rte,
 
 			attrname = "wholerow";
 
-			/*
-			 * GPDB also needs gp_segment_id. ctid is only unique in the same
-			 * segment.
-			 */
-			{
-				Oid			reloid;
-				Oid			vartypeid;
-				int32		type_mod;
-				Oid			type_coll;
+		}
 
-				reloid = RelationGetRelid(target_relation);
-				get_atttypetypmodcoll(reloid, GpSegmentIdAttributeNumber, &vartypeid, &type_mod, &type_coll);
-				varSegid = makeVar(parsetree->resultRelation,
-								   GpSegmentIdAttributeNumber,
-								   vartypeid,
-								   type_mod,
-								   type_coll,
-								   0);
-			}
+		/*
+		 * GPDB also needs gp_segment_id. ctid is only unique in the same
+		 * segment.
+		 */
+		if (target_relation->rd_cdbpolicy->ptype == POLICYTYPE_PARTITIONED)
+		{
+			Oid			reloid;
+			Oid			vartypeid;
+			int32		type_mod;
+			Oid			type_coll;
+
+			reloid = RelationGetRelid(target_relation);
+			get_atttypetypmodcoll(reloid, GpSegmentIdAttributeNumber, &vartypeid, &type_mod, &type_coll);
+			varSegid = makeVar(parsetree->resultRelation,
+							   GpSegmentIdAttributeNumber,
+							   vartypeid,
+							   type_mod,
+							   type_coll,
+							   0);
 		}
 	}
 

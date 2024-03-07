@@ -20,6 +20,7 @@
 #include "access/tupdesc.h"
 #include "access/htup_details.h"
 #include "storage/buf.h"
+#include "cdb/cdbvars.h"                /* GpIdentity.segindex */
 
 /*----------
  * The executor stores tuples in a "tuple table" which is a List of
@@ -414,6 +415,11 @@ slot_getsysattr(TupleTableSlot *slot, int attnum, bool *isnull)
 	{
 		*isnull = false;
 		return PointerGetDatum(&slot->tts_tid);
+	}
+	else if (attnum == GpSegmentIdAttributeNumber)
+	{
+		*isnull = false;
+		return Int32GetDatum(GpIdentity.segindex);
 	}
 
 	/* Fetch the system attribute from the underlying tuple. */
