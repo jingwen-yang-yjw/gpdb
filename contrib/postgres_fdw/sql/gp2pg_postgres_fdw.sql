@@ -18,9 +18,9 @@ CREATE EXTENSION postgres_fdw;
 
 CREATE SERVER testserver1 FOREIGN DATA WRAPPER postgres_fdw;
 CREATE SERVER pgserver FOREIGN DATA WRAPPER postgres_fdw
-  OPTIONS (dbname 'contrib_regression', host 'localhost', port '5432', server_type 'single', mpp_execute 'all segments');
+  OPTIONS (dbname 'contrib_regression', host 'localhost', port '5432');
 CREATE SERVER pgserver2 FOREIGN DATA WRAPPER postgres_fdw
-  OPTIONS (dbname 'contrib_regression', host 'localhost', port '5432', server_type 'single', mpp_execute 'all segments');
+  OPTIONS (dbname 'contrib_regression', host 'localhost', port '5432');
 
 CREATE USER MAPPING FOR public SERVER testserver1
 	OPTIONS (user 'value', password 'value');
@@ -113,7 +113,7 @@ CREATE FOREIGN TABLE ft1 (
 	c6 varchar(10),
 	c7 char(10) default 'ft1',
 	c8 user_enum
-) SERVER pgserver options (partition_by 'c1', range '1;1000');
+) SERVER pgserver;
 ALTER FOREIGN TABLE ft1 DROP COLUMN c0;
 
 CREATE FOREIGN TABLE ft2 (
@@ -126,26 +126,26 @@ CREATE FOREIGN TABLE ft2 (
 	c6 varchar(10),
 	c7 char(10) default 'ft2',
 	c8 user_enum
-) SERVER pgserver options (partition_by 'c1', range '1;1000');
+) SERVER pgserver;
 ALTER FOREIGN TABLE ft2 DROP COLUMN cx;
 
 CREATE FOREIGN TABLE ft4 (
 	c1 int NOT NULL,
 	c2 int NOT NULL,
 	c3 text
-) SERVER pgserver OPTIONS (schema_name 'S 1', table_name 'T 3', partition_by 'c1', range '1;100');
+) SERVER pgserver OPTIONS (schema_name 'S 1', table_name 'T 3');
 
 CREATE FOREIGN TABLE ft5 (
 	c1 int NOT NULL,
 	c2 int NOT NULL,
 	c3 text
-) SERVER pgserver OPTIONS (schema_name 'S 1', table_name 'T 4', partition_by 'c1', range '1;100');
+) SERVER pgserver OPTIONS (schema_name 'S 1', table_name 'T 4');
 
 CREATE FOREIGN TABLE ft6 (
 	c1 int NOT NULL,
 	c2 int NOT NULL,
 	c3 text
-) SERVER pgserver2 OPTIONS (schema_name 'S 1', table_name 'T 4', partition_by 'c1', range '1;100');
+) SERVER pgserver2 OPTIONS (schema_name 'S 1', table_name 'T 4');
 
 -- ===================================================================
 -- tests for validator
@@ -414,8 +414,8 @@ SELECT t1.c1, t2.c1 FROM ft4 t1 LEFT JOIN ft5 t2 ON (t1.c1 = t2.c1) ORDER BY t1.
 SELECT t1.c1, t2.c1 FROM ft4 t1 LEFT JOIN ft5 t2 ON (t1.c1 = t2.c1) ORDER BY t1.c1, t2.c1 OFFSET 10 LIMIT 10;
 -- left outer join three tables
 EXPLAIN (VERBOSE, COSTS OFF)
-SELECT t1.c1, t2.c2, t3.c3 FROM ft2 t1 LEFT JOIN ft2 t2 ON (t1.c1 = t2.c1) LEFT JOIN ft4 t3 ON (t2.c1 = t3.c1) ORDER BY t1.c1, t2.c1 OFFSET 10 LIMIT 10;
-SELECT t1.c1, t2.c2, t3.c3 FROM ft2 t1 LEFT JOIN ft2 t2 ON (t1.c1 = t2.c1) LEFT JOIN ft4 t3 ON (t2.c1 = t3.c1) ORDER BY t1.c1, t2.c1 OFFSET 10 LIMIT 10;
+SELECT t1.c1, t2.c2, t3.c3 FROM ft2 t1 LEFT JOIN ft2 t2 ON (t1.c1 = t2.c1) LEFT JOIN ft4 t3 ON (t2.c1 = t3.c1) OFFSET 10 LIMIT 10;
+SELECT t1.c1, t2.c2, t3.c3 FROM ft2 t1 LEFT JOIN ft2 t2 ON (t1.c1 = t2.c1) LEFT JOIN ft4 t3 ON (t2.c1 = t3.c1) OFFSET 10 LIMIT 10;
 -- left outer join + placement of clauses.
 -- clauses within the nullable side are not pulled up, but top level clause on
 -- non-nullable side is pushed into non-nullable side
@@ -435,8 +435,8 @@ SELECT t1.c1, t2.c1 FROM ft5 t1 RIGHT JOIN ft4 t2 ON (t1.c1 = t2.c1) ORDER BY t2
 SELECT t1.c1, t2.c1 FROM ft5 t1 RIGHT JOIN ft4 t2 ON (t1.c1 = t2.c1) ORDER BY t2.c1, t1.c1 OFFSET 10 LIMIT 10;
 -- right outer join three tables
 EXPLAIN (VERBOSE, COSTS OFF)
-SELECT t1.c1, t2.c2, t3.c3 FROM ft2 t1 RIGHT JOIN ft2 t2 ON (t1.c1 = t2.c1) RIGHT JOIN ft4 t3 ON (t2.c1 = t3.c1) ORDER BY t1.c1, t2.c1 OFFSET 10 LIMIT 10;
-SELECT t1.c1, t2.c2, t3.c3 FROM ft2 t1 RIGHT JOIN ft2 t2 ON (t1.c1 = t2.c1) RIGHT JOIN ft4 t3 ON (t2.c1 = t3.c1) ORDER BY t1.c1, t2.c1 OFFSET 10 LIMIT 10;
+SELECT t1.c1, t2.c2, t3.c3 FROM ft2 t1 RIGHT JOIN ft2 t2 ON (t1.c1 = t2.c1) RIGHT JOIN ft4 t3 ON (t2.c1 = t3.c1) OFFSET 10 LIMIT 10;
+SELECT t1.c1, t2.c2, t3.c3 FROM ft2 t1 RIGHT JOIN ft2 t2 ON (t1.c1 = t2.c1) RIGHT JOIN ft4 t3 ON (t2.c1 = t3.c1) OFFSET 10 LIMIT 10;
 -- full outer join
 EXPLAIN (VERBOSE, COSTS OFF)
 SELECT t1.c1, t2.c1 FROM ft4 t1 FULL JOIN ft5 t2 ON (t1.c1 = t2.c1) ORDER BY t1.c1, t2.c1 OFFSET 45 LIMIT 10;
@@ -447,8 +447,8 @@ EXPLAIN (VERBOSE, COSTS OFF)
 SELECT t1.c1, t2.c1 FROM (SELECT c1 FROM ft4 WHERE c1 between 50 and 60) t1 FULL JOIN (SELECT c1 FROM ft5 WHERE c1 between 50 and 60) t2 ON (t1.c1 = t2.c1) ORDER BY t1.c1, t2.c1;
 SELECT t1.c1, t2.c1 FROM (SELECT c1 FROM ft4 WHERE c1 between 50 and 60) t1 FULL JOIN (SELECT c1 FROM ft5 WHERE c1 between 50 and 60) t2 ON (t1.c1 = t2.c1) ORDER BY t1.c1, t2.c1;
 EXPLAIN (VERBOSE, COSTS OFF)
-SELECT 1 FROM (SELECT c1 FROM ft4 WHERE c1 between 50 and 60) t1 FULL JOIN (SELECT c1 FROM ft5 WHERE c1 between 50 and 60) t2 ON (TRUE) ORDER BY t1.c1, t2.c1 OFFSET 10 LIMIT 10;
-SELECT 1 FROM (SELECT c1 FROM ft4 WHERE c1 between 50 and 60) t1 FULL JOIN (SELECT c1 FROM ft5 WHERE c1 between 50 and 60) t2 ON (TRUE) ORDER BY t1.c1, t2.c1 OFFSET 10 LIMIT 10;
+SELECT 1 FROM (SELECT c1 FROM ft4 WHERE c1 between 50 and 60) t1 FULL JOIN (SELECT c1 FROM ft5 WHERE c1 between 50 and 60) t2 ON (TRUE) OFFSET 10 LIMIT 10;
+SELECT 1 FROM (SELECT c1 FROM ft4 WHERE c1 between 50 and 60) t1 FULL JOIN (SELECT c1 FROM ft5 WHERE c1 between 50 and 60) t2 ON (TRUE) OFFSET 10 LIMIT 10;
 -- b. one of the joining relations is a base relation and the other is a join
 -- relation
 EXPLAIN (VERBOSE, COSTS OFF)
@@ -468,43 +468,43 @@ SELECT t1.c1, t2.c1, t3.c1 FROM ft4 t1 INNER JOIN ft5 t2 ON (t1.c1 = t2.c1 + 1 a
 SELECT t1.c1, t2.c1, t3.c1 FROM ft4 t1 INNER JOIN ft5 t2 ON (t1.c1 = t2.c1 + 1 and t1.c1 between 50 and 60) FULL JOIN ft4 t3 ON (t2.c1 = t3.c1) ORDER BY t1.c1, t2.c1, t3.c1 LIMIT 10;
 -- full outer join three tables
 EXPLAIN (VERBOSE, COSTS OFF)
-SELECT t1.c1, t2.c2, t3.c3 FROM ft2 t1 FULL JOIN ft2 t2 ON (t1.c1 = t2.c1) FULL JOIN ft4 t3 ON (t2.c1 = t3.c1) ORDER BY t1.c1, t2.c1 OFFSET 10 LIMIT 10;
-SELECT t1.c1, t2.c2, t3.c3 FROM ft2 t1 FULL JOIN ft2 t2 ON (t1.c1 = t2.c1) FULL JOIN ft4 t3 ON (t2.c1 = t3.c1) ORDER BY t1.c1, t2.c1 OFFSET 10 LIMIT 10;
+SELECT t1.c1, t2.c2, t3.c3 FROM ft2 t1 FULL JOIN ft2 t2 ON (t1.c1 = t2.c1) FULL JOIN ft4 t3 ON (t2.c1 = t3.c1) OFFSET 10 LIMIT 10;
+SELECT t1.c1, t2.c2, t3.c3 FROM ft2 t1 FULL JOIN ft2 t2 ON (t1.c1 = t2.c1) FULL JOIN ft4 t3 ON (t2.c1 = t3.c1) OFFSET 10 LIMIT 10;
 -- full outer join + right outer join
 EXPLAIN (VERBOSE, COSTS OFF)
-SELECT t1.c1, t2.c2, t3.c3 FROM ft2 t1 FULL JOIN ft2 t2 ON (t1.c1 = t2.c1) RIGHT JOIN ft4 t3 ON (t2.c1 = t3.c1) ORDER BY t1.c1, t2.c1 OFFSET 10 LIMIT 10;
-SELECT t1.c1, t2.c2, t3.c3 FROM ft2 t1 FULL JOIN ft2 t2 ON (t1.c1 = t2.c1) RIGHT JOIN ft4 t3 ON (t2.c1 = t3.c1) ORDER BY t1.c1, t2.c1 OFFSET 10 LIMIT 10;
+SELECT t1.c1, t2.c2, t3.c3 FROM ft2 t1 FULL JOIN ft2 t2 ON (t1.c1 = t2.c1) RIGHT JOIN ft4 t3 ON (t2.c1 = t3.c1) OFFSET 10 LIMIT 10;
+SELECT t1.c1, t2.c2, t3.c3 FROM ft2 t1 FULL JOIN ft2 t2 ON (t1.c1 = t2.c1) RIGHT JOIN ft4 t3 ON (t2.c1 = t3.c1) OFFSET 10 LIMIT 10;
 -- right outer join + full outer join
 EXPLAIN (VERBOSE, COSTS OFF)
-SELECT t1.c1, t2.c2, t3.c3 FROM ft2 t1 RIGHT JOIN ft2 t2 ON (t1.c1 = t2.c1) FULL JOIN ft4 t3 ON (t2.c1 = t3.c1) ORDER BY t1.c1, t2.c1 OFFSET 10 LIMIT 10;
-SELECT t1.c1, t2.c2, t3.c3 FROM ft2 t1 RIGHT JOIN ft2 t2 ON (t1.c1 = t2.c1) FULL JOIN ft4 t3 ON (t2.c1 = t3.c1) ORDER BY t1.c1, t2.c1 OFFSET 10 LIMIT 10;
+SELECT t1.c1, t2.c2, t3.c3 FROM ft2 t1 RIGHT JOIN ft2 t2 ON (t1.c1 = t2.c1) FULL JOIN ft4 t3 ON (t2.c1 = t3.c1) OFFSET 10 LIMIT 10;
+SELECT t1.c1, t2.c2, t3.c3 FROM ft2 t1 RIGHT JOIN ft2 t2 ON (t1.c1 = t2.c1) FULL JOIN ft4 t3 ON (t2.c1 = t3.c1) OFFSET 10 LIMIT 10;
 -- full outer join + left outer join
 EXPLAIN (VERBOSE, COSTS OFF)
-SELECT t1.c1, t2.c2, t3.c3 FROM ft2 t1 FULL JOIN ft2 t2 ON (t1.c1 = t2.c1) LEFT JOIN ft4 t3 ON (t2.c1 = t3.c1) ORDER BY t1.c1, t2.c1 OFFSET 10 LIMIT 10;
-SELECT t1.c1, t2.c2, t3.c3 FROM ft2 t1 FULL JOIN ft2 t2 ON (t1.c1 = t2.c1) LEFT JOIN ft4 t3 ON (t2.c1 = t3.c1) ORDER BY t1.c1, t2.c1 OFFSET 10 LIMIT 10;
+SELECT t1.c1, t2.c2, t3.c3 FROM ft2 t1 FULL JOIN ft2 t2 ON (t1.c1 = t2.c1) LEFT JOIN ft4 t3 ON (t2.c1 = t3.c1) OFFSET 10 LIMIT 10;
+SELECT t1.c1, t2.c2, t3.c3 FROM ft2 t1 FULL JOIN ft2 t2 ON (t1.c1 = t2.c1) LEFT JOIN ft4 t3 ON (t2.c1 = t3.c1) OFFSET 10 LIMIT 10;
 -- left outer join + full outer join
 EXPLAIN (VERBOSE, COSTS OFF)
-SELECT t1.c1, t2.c2, t3.c3 FROM ft2 t1 LEFT JOIN ft2 t2 ON (t1.c1 = t2.c1) FULL JOIN ft4 t3 ON (t2.c1 = t3.c1) ORDER BY t1.c1, t2.c1 OFFSET 10 LIMIT 10;
-SELECT t1.c1, t2.c2, t3.c3 FROM ft2 t1 LEFT JOIN ft2 t2 ON (t1.c1 = t2.c1) FULL JOIN ft4 t3 ON (t2.c1 = t3.c1) ORDER BY t1.c1, t2.c1 OFFSET 10 LIMIT 10;
+SELECT t1.c1, t2.c2, t3.c3 FROM ft2 t1 LEFT JOIN ft2 t2 ON (t1.c1 = t2.c1) FULL JOIN ft4 t3 ON (t2.c1 = t3.c1) OFFSET 10 LIMIT 10;
+SELECT t1.c1, t2.c2, t3.c3 FROM ft2 t1 LEFT JOIN ft2 t2 ON (t1.c1 = t2.c1) FULL JOIN ft4 t3 ON (t2.c1 = t3.c1) OFFSET 10 LIMIT 10;
 -- right outer join + left outer join
 EXPLAIN (VERBOSE, COSTS OFF)
-SELECT t1.c1, t2.c2, t3.c3 FROM ft2 t1 RIGHT JOIN ft2 t2 ON (t1.c1 = t2.c1) LEFT JOIN ft4 t3 ON (t2.c1 = t3.c1) ORDER BY t1.c1, t2.c1 OFFSET 10 LIMIT 10;
-SELECT t1.c1, t2.c2, t3.c3 FROM ft2 t1 RIGHT JOIN ft2 t2 ON (t1.c1 = t2.c1) LEFT JOIN ft4 t3 ON (t2.c1 = t3.c1) ORDER BY t1.c1, t2.c1 OFFSET 10 LIMIT 10;
+SELECT t1.c1, t2.c2, t3.c3 FROM ft2 t1 RIGHT JOIN ft2 t2 ON (t1.c1 = t2.c1) LEFT JOIN ft4 t3 ON (t2.c1 = t3.c1) OFFSET 10 LIMIT 10;
+SELECT t1.c1, t2.c2, t3.c3 FROM ft2 t1 RIGHT JOIN ft2 t2 ON (t1.c1 = t2.c1) LEFT JOIN ft4 t3 ON (t2.c1 = t3.c1) OFFSET 10 LIMIT 10;
 -- left outer join + right outer join
 EXPLAIN (VERBOSE, COSTS OFF)
-SELECT t1.c1, t2.c2, t3.c3 FROM ft2 t1 LEFT JOIN ft2 t2 ON (t1.c1 = t2.c1) RIGHT JOIN ft4 t3 ON (t2.c1 = t3.c1) ORDER BY t1.c1, t2.c1 OFFSET 10 LIMIT 10;
-SELECT t1.c1, t2.c2, t3.c3 FROM ft2 t1 LEFT JOIN ft2 t2 ON (t1.c1 = t2.c1) RIGHT JOIN ft4 t3 ON (t2.c1 = t3.c1) ORDER BY t1.c1, t2.c1 OFFSET 10 LIMIT 10;
+SELECT t1.c1, t2.c2, t3.c3 FROM ft2 t1 LEFT JOIN ft2 t2 ON (t1.c1 = t2.c1) RIGHT JOIN ft4 t3 ON (t2.c1 = t3.c1) OFFSET 10 LIMIT 10;
+SELECT t1.c1, t2.c2, t3.c3 FROM ft2 t1 LEFT JOIN ft2 t2 ON (t1.c1 = t2.c1) RIGHT JOIN ft4 t3 ON (t2.c1 = t3.c1) OFFSET 10 LIMIT 10;
 -- full outer join + WHERE clause, only matched rows
 EXPLAIN (VERBOSE, COSTS OFF)
 SELECT t1.c1, t2.c1 FROM ft4 t1 FULL JOIN ft5 t2 ON (t1.c1 = t2.c1) WHERE (t1.c1 = t2.c1 OR t1.c1 IS NULL) ORDER BY t1.c1, t2.c1 OFFSET 10 LIMIT 10;
 SELECT t1.c1, t2.c1 FROM ft4 t1 FULL JOIN ft5 t2 ON (t1.c1 = t2.c1) WHERE (t1.c1 = t2.c1 OR t1.c1 IS NULL) ORDER BY t1.c1, t2.c1 OFFSET 10 LIMIT 10;
 -- full outer join + WHERE clause with shippable extensions set
 EXPLAIN (VERBOSE, COSTS OFF)
-SELECT t1.c1, t2.c2, t1.c3 FROM ft1 t1 FULL JOIN ft2 t2 ON (t1.c1 = t2.c1) WHERE postgres_fdw_abs(t1.c1) > 0 ORDER BY t1.c1, t2.c1 OFFSET 10 LIMIT 10;
+SELECT t1.c1, t2.c2, t1.c3 FROM ft1 t1 FULL JOIN ft2 t2 ON (t1.c1 = t2.c1) WHERE postgres_fdw_abs(t1.c1) > 0 OFFSET 10 LIMIT 10;
 ALTER SERVER pgserver OPTIONS (DROP extensions);
 -- full outer join + WHERE clause with shippable extensions not set
 EXPLAIN (VERBOSE, COSTS OFF)
-SELECT t1.c1, t2.c2, t1.c3 FROM ft1 t1 FULL JOIN ft2 t2 ON (t1.c1 = t2.c1) WHERE postgres_fdw_abs(t1.c1) > 0 ORDER BY t1.c1, t2.c1 OFFSET 10 LIMIT 10;
+SELECT t1.c1, t2.c2, t1.c3 FROM ft1 t1 FULL JOIN ft2 t2 ON (t1.c1 = t2.c1) WHERE postgres_fdw_abs(t1.c1) > 0 OFFSET 10 LIMIT 10;
 ALTER SERVER pgserver OPTIONS (ADD extensions 'postgres_fdw');
 -- join two tables with FOR UPDATE clause
 -- tests whole-row reference for row marks
@@ -568,8 +568,8 @@ SELECT t1c1, avg(t1c1 + t2c1) FROM (SELECT t1.c1, t2.c1 FROM ft1 t1 JOIN ft2 t2 
 SELECT t1c1, avg(t1c1 + t2c1) FROM (SELECT t1.c1, t2.c1 FROM ft1 t1 JOIN ft2 t2 ON (t1.c1 = t2.c1) UNION SELECT t1.c1, t2.c1 FROM ft1 t1 JOIN ft2 t2 ON (t1.c1 = t2.c1)) AS t (t1c1, t2c1) GROUP BY t1c1 ORDER BY t1c1 OFFSET 100 LIMIT 10;
 -- join with lateral reference
 EXPLAIN (VERBOSE, COSTS OFF)
-SELECT t1."C 1" FROM "S 1"."T 1" t1, LATERAL (SELECT DISTINCT t2.c1, t3.c1 FROM ft1 t2, ft2 t3 WHERE t2.c1 = t3.c1 AND t2.c2 = t1.c2) q ORDER BY t1."C 1", t1.c2 OFFSET 10 LIMIT 10;
-SELECT t1."C 1" FROM "S 1"."T 1" t1, LATERAL (SELECT DISTINCT t2.c1, t3.c1 FROM ft1 t2, ft2 t3 WHERE t2.c1 = t3.c1 AND t2.c2 = t1.c2) q ORDER BY t1."C 1", t1.c2 OFFSET 10 LIMIT 10;
+SELECT t1."C 1" FROM "S 1"."T 1" t1, LATERAL (SELECT DISTINCT t2.c1, t3.c1 FROM ft1 t2, ft2 t3 WHERE t2.c1 = t3.c1 AND t2.c2 = t1.c2) q ORDER BY t1."C 1" OFFSET 10 LIMIT 10;
+SELECT t1."C 1" FROM "S 1"."T 1" t1, LATERAL (SELECT DISTINCT t2.c1, t3.c1 FROM ft1 t2, ft2 t3 WHERE t2.c1 = t3.c1 AND t2.c2 = t1.c2) q ORDER BY t1."C 1" OFFSET 10 LIMIT 10;
 
 RESET enable_mergejoin;
 -- non-Var items in targetlist of the nullable rel of a join preventing
@@ -604,8 +604,8 @@ SET enable_mergejoin TO true;
 EXPLAIN (VERBOSE, COSTS OFF)
 SELECT * FROM ft1, ft2, ft4, ft5, local_tbl WHERE ft1.c1 = ft2.c1 AND ft1.c2 = ft4.c1
     AND ft1.c2 = ft5.c1 AND ft1.c2 = local_tbl.c1 AND ft1.c1 < 100 AND ft2.c1 < 100 FOR UPDATE;
--- SELECT * FROM ft1, ft2, ft4, ft5, local_tbl WHERE ft1.c1 = ft2.c1 AND ft1.c2 = ft4.c1
-  --  AND ft1.c2 = ft5.c1 AND ft1.c2 = local_tbl.c1 AND ft1.c1 < 100 AND ft2.c1 < 100 FOR UPDATE;
+SELECT * FROM ft1, ft2, ft4, ft5, local_tbl WHERE ft1.c1 = ft2.c1 AND ft1.c2 = ft4.c1
+    AND ft1.c2 = ft5.c1 AND ft1.c2 = local_tbl.c1 AND ft1.c1 < 100 AND ft2.c1 < 100 FOR UPDATE;
 RESET enable_nestloop;
 RESET enable_hashjoin;
 RESET enable_mergejoin;
@@ -1077,17 +1077,17 @@ DEALLOCATE st8;
 
 -- System columns, except ctid and oid, should not be sent to remote
 EXPLAIN (VERBOSE, COSTS OFF)
-SELECT * FROM ft1 t1 WHERE t1.tableoid = 'pg_class'::regclass ORDER BY t1.c1, t1.c2 LIMIT 1;
-SELECT * FROM ft1 t1 WHERE t1.tableoid = 'ft1'::regclass ORDER BY t1.c1, t1.c2 LIMIT 1;
+SELECT * FROM ft1 t1 WHERE t1.tableoid = 'pg_class'::regclass LIMIT 1;
+SELECT * FROM ft1 t1 WHERE t1.tableoid = 'ft1'::regclass LIMIT 1;
 EXPLAIN (VERBOSE, COSTS OFF)
-SELECT tableoid::regclass, * FROM ft1 t1 ORDER BY t1.c1, t1.c2 LIMIT 1;
-SELECT tableoid::regclass, * FROM ft1 t1 ORDER BY t1.c1, t1.c2 LIMIT 1;
+SELECT tableoid::regclass, * FROM ft1 t1 LIMIT 1;
+SELECT tableoid::regclass, * FROM ft1 t1 LIMIT 1;
 EXPLAIN (VERBOSE, COSTS OFF)
-SELECT * FROM ft1 t1 WHERE t1.ctid = '(0,2)' ORDER BY t1.c1, t1.c2;
-SELECT * FROM ft1 t1 WHERE t1.ctid = '(0,2)' ORDER BY t1.c1, t1.c2;
+SELECT * FROM ft1 t1 WHERE t1.ctid = '(0,2)';
+SELECT * FROM ft1 t1 WHERE t1.ctid = '(0,2)';
 EXPLAIN (VERBOSE, COSTS OFF)
-SELECT ctid, * FROM ft1 t1 ORDER BY t1.c1, t1.c2 LIMIT 1;
-SELECT ctid, * FROM ft1 t1 ORDER BY t1.c1, t1.c2 LIMIT 1;
+SELECT ctid, * FROM ft1 t1 LIMIT 1;
+SELECT ctid, * FROM ft1 t1 LIMIT 1;
 
 -- ===================================================================
 -- used in PL/pgSQL function
@@ -1188,8 +1188,8 @@ explain (verbose, costs off) select * from ft3 f, loct3 l
 -- test writable foreign table stuff
 -- ===================================================================
 EXPLAIN (verbose, costs off)
-INSERT INTO ft2 (c1,c2,c3) SELECT c1+1000,c2+100, c3 || c3 FROM ft2 ORDER BY c1, c2 LIMIT 20;
-INSERT INTO ft2 (c1,c2,c3) SELECT c1+1000,c2+100, c3 || c3 FROM ft2 ORDER BY c1, c2 LIMIT 20;
+INSERT INTO ft2 (c1,c2,c3) SELECT c1+1000,c2+100, c3 || c3 FROM ft2 LIMIT 20;
+INSERT INTO ft2 (c1,c2,c3) SELECT c1+1000,c2+100, c3 || c3 FROM ft2 LIMIT 20;
 INSERT INTO ft2 (c1,c2,c3)
   VALUES (1101,201,'aaa'), (1102,202,'bbb'), (1103,203,'ccc') RETURNING *;
 INSERT INTO ft2 (c1,c2,c3) VALUES (1104,204,'ddd'), (1105,205,'eee');
@@ -1413,7 +1413,7 @@ ALTER FOREIGN TABLE ft1 DROP CONSTRAINT ft1_c2negative;
 -- ALTER TABLE base_tbl SET (autovacuum_enabled = 'false');
 -- CREATE TRIGGER row_before_insupd_trigger BEFORE INSERT OR UPDATE ON base_tbl FOR EACH ROW EXECUTE PROCEDURE row_before_insupd_trigfunc();
 CREATE FOREIGN TABLE foreign_tbl (a int, b int)
-  SERVER pgserver OPTIONS (table_name 'base_tbl', partition_by 'a', range '0;50');
+  SERVER pgserver OPTIONS (table_name 'base_tbl');
 CREATE VIEW rw_view AS SELECT * FROM foreign_tbl
   WHERE a < b WITH CHECK OPTION;
 \d+ rw_view
@@ -1448,7 +1448,7 @@ DROP FOREIGN TABLE foreign_tbl CASCADE;
 -- ALTER TABLE child_tbl SET (autovacuum_enabled = 'false');
 -- CREATE TRIGGER row_before_insupd_trigger BEFORE INSERT OR UPDATE ON child_tbl FOR EACH ROW EXECUTE PROCEDURE row_before_insupd_trigfunc();
 CREATE FOREIGN TABLE foreign_tbl (a int, b int)
-  SERVER pgserver OPTIONS (table_name 'child_tbl', partition_by 'a', range '0;50');
+  SERVER pgserver OPTIONS (table_name 'child_tbl');
 
 CREATE TABLE parent_tbl (a int, b int) PARTITION BY RANGE(a);
 ALTER TABLE parent_tbl ATTACH PARTITION foreign_tbl FOR VALUES FROM (0) TO (100);
@@ -1493,7 +1493,7 @@ DROP TABLE parent_tbl CASCADE;
 -- create table loc1 (f1 serial, f2 text);
 -- alter table loc1 set (autovacuum_enabled = 'false');
 create foreign table rem1 (f1 serial, f2 text)
-  server pgserver options(table_name 'loc1', partition_by 'f1', range '0;15');
+  server pgserver options(table_name 'loc1');
 select pg_catalog.setval('rem1_f1_seq', 10, false);
 \! env PGOPTIONS='' psql -p ${PG_PORT} contrib_regression -c "insert into loc1(f2) values('hi');"
 -- insert into loc1(f2) values('hi');
@@ -1517,7 +1517,7 @@ select * from rem1;
 create foreign table grem1 (
   a int,
   b int generated always as (a * 2) stored)
-  server pgserver options(table_name 'gloc1', partition_by 'a', range '1;30');
+  server pgserver options(table_name 'gloc1');
 explain (verbose, costs off)
 insert into grem1 (a) values (1), (2);
 insert into grem1 (a) values (1), (2);
@@ -1595,6 +1595,7 @@ FOR EACH ROW EXECUTE PROCEDURE trigger_data(23,'skidoo');
 CREATE TRIGGER trig_row_after
 AFTER INSERT OR UPDATE OR DELETE ON rem1
 FOR EACH ROW EXECUTE PROCEDURE trigger_data(23,'skidoo');
+
 delete from rem1;
 insert into rem1 values(1,'insert');
 update rem1 set f2  = 'update' where f1 = 1;
@@ -1624,6 +1625,7 @@ insert into rem1 values(1,'insert');
 update rem1 set f2  = 'update' where f1 = 1;
 update rem1 set f2 = f2 || f2;
 delete from rem1;
+
 -- cleanup
 DROP TRIGGER trig_row_after1 ON rem1;
 DROP TRIGGER trig_row_after2 ON rem1;
@@ -1874,14 +1876,14 @@ DROP TRIGGER trig_row_after_delete ON rem1;
 -- ===================================================================
 -- test inheritance features
 -- ===================================================================
-CREATE TABLE a (aa TEXT, cc serial);
+CREATE TABLE a (aa TEXT);
 ALTER TABLE a SET (autovacuum_enabled = 'false');
-\! env PGOPTIONS='' psql -p ${PG_PORT} contrib_regression -c 'CREATE TABLE loct (aa TEXT, bb TEXT, cc serial);'
+\! env PGOPTIONS='' psql -p ${PG_PORT} contrib_regression -c 'CREATE TABLE loct (aa TEXT, bb TEXT);'
 \! env PGOPTIONS='' psql -p ${PG_PORT} contrib_regression -c 'ALTER TABLE loct SET (autovacuum_enabled = 'false');'
 -- CREATE TABLE loct (aa TEXT, bb TEXT);
 -- ALTER TABLE loct SET (autovacuum_enabled = 'false');
 CREATE FOREIGN TABLE b (bb TEXT) INHERITS (a)
-  SERVER pgserver OPTIONS (table_name 'loct', partition_by 'cc', range '1; 10');
+  SERVER pgserver OPTIONS (table_name 'loct');
 
 INSERT INTO a(aa) VALUES('aaa');
 INSERT INTO a(aa) VALUES('aaaa');
@@ -1943,10 +1945,10 @@ alter table loct2 set (autovacuum_enabled = 'false');
 
 create table foo (f1 int, f2 int);
 create foreign table foo2 (f3 int) inherits (foo)
-  server pgserver options (table_name 'loct1', partition_by 'f3', range '1;100');
+  server pgserver options (table_name 'loct1');
 create table bar (f1 int, f2 int);
 create foreign table bar2 (f3 int) inherits (bar)
-  server pgserver options (table_name 'loct2', partition_by 'f3', range '1;100');
+  server pgserver options (table_name 'loct2');
 
 alter table foo set (autovacuum_enabled = 'false');
 alter table bar set (autovacuum_enabled = 'false');
@@ -2104,9 +2106,9 @@ create table parent (a int, b text);
 -- create table loct1 (a int, b text);
 -- create table loct2 (a int, b text);
 create foreign table remt1 (a int, b text)
-  server pgserver options (table_name 'loct1', partition_by 'a', range '1;3');
+  server pgserver options (table_name 'loct1');
 create foreign table remt2 (a int, b text)
-  server pgserver options (table_name 'loct2', partition_by 'a', range '1;3');
+  server pgserver options (table_name 'loct2');
 alter foreign table remt1 inherit parent;
 
 insert into remt1 values (1, 'foo');
@@ -2145,10 +2147,10 @@ drop table parent;
 create table itrtest (a int, b text) partition by list (a);
 \! env PGOPTIONS='' psql -p ${PG_PORT} contrib_regression -c 'create table loct1 (a int check (a in (1)), b text);'
 -- create table loct1 (a int check (a in (1)), b text);
-create foreign table remp1 (a int check (a in (1)), b text) server pgserver options (table_name 'loct1', partition_by 'a', range '1;3');
+create foreign table remp1 (a int check (a in (1)), b text) server pgserver options (table_name 'loct1');
 \! env PGOPTIONS='' psql -p ${PG_PORT} contrib_regression -c 'create table loct2 (a int check (a in (2)), b text);'
 -- create table loct2 (a int check (a in (2)), b text);
-create foreign table remp2 (b text, a int check (a in (2))) server pgserver options (table_name 'loct2', partition_by 'a', range '1;3');
+create foreign table remp2 (b text, a int check (a in (2))) server pgserver options (table_name 'loct2');
 alter table itrtest attach partition remp1 for values in (1);
 alter table itrtest attach partition remp2 for values in (2);
 
@@ -2333,10 +2335,10 @@ drop table utrtest;
 create table ctrtest (a int, b text) partition by list (a);
 \! env PGOPTIONS='' psql -p ${PG_PORT} contrib_regression -c 'create table loct1 (a int check (a in (1)), b text);'
 -- create table loct1 (a int check (a in (1)), b text);
-create foreign table remp1 (a int check (a in (1)), b text) server pgserver options (table_name 'loct1', partition_by 'a', range '1;3');
+create foreign table remp1 (a int check (a in (1)), b text) server pgserver options (table_name 'loct1');
 \! env PGOPTIONS='' psql -p ${PG_PORT} contrib_regression -c 'create table loct2 (a int check (a in (2)), b text);'
 -- create table loct2 (a int check (a in (2)), b text);
-create foreign table remp2 (b text, a int check (a in (2))) server pgserver options (table_name 'loct2', partition_by 'a', range '1;3');
+create foreign table remp2 (b text, a int check (a in (2))) server pgserver options (table_name 'loct2');
 alter table ctrtest attach partition remp1 for values in (1);
 alter table ctrtest attach partition remp2 for values in (2);
 
@@ -2370,7 +2372,7 @@ drop table ctrtest;
 \! env PGOPTIONS='' psql -p ${PG_PORT} contrib_regression -c 'alter table loc2 set (autovacuum_enabled = 'false');'
 -- create table loc2 (f1 int, f2 text);
 -- alter table loc2 set (autovacuum_enabled = 'false');
-create foreign table rem2 (f1 int, f2 text) server pgserver options(table_name 'loc2', partition_by 'f1', range '1;3');
+create foreign table rem2 (f1 int, f2 text) server pgserver options(table_name 'loc2');
 
 -- Test basic functionality
 copy rem2 from stdin;
@@ -2518,7 +2520,7 @@ delete from rem2;
 -- create table loc3 (f1 int, f2 text);
 begin;
 create foreign table rem3 (f1 int, f2 text)
-	server pgserver options(table_name 'loc3', partition_by 'f1', range '1;3');
+	server pgserver options(table_name 'loc3');
 copy rem3 from stdin;
 1	foo
 2	bar
@@ -2667,9 +2669,9 @@ CREATE TABLE fprt1 (a int, b int, c varchar) PARTITION BY RANGE(a);
 -- INSERT INTO fprt1_p1 SELECT i, i, to_char(i/50, 'FM0000') FROM generate_series(0, 249, 2) i;
 -- INSERT INTO fprt1_p2 SELECT i, i, to_char(i/50, 'FM0000') FROM generate_series(250, 499, 2) i;
 CREATE FOREIGN TABLE ftprt1_p1 PARTITION OF fprt1 FOR VALUES FROM (0) TO (250)
-	SERVER pgserver OPTIONS (table_name 'fprt1_p1', use_remote_estimate 'true', partition_by 'a', range '0;250');
+	SERVER pgserver OPTIONS (table_name 'fprt1_p1', use_remote_estimate 'true');
 CREATE FOREIGN TABLE ftprt1_p2 PARTITION OF fprt1 FOR VALUES FROM (250) TO (500)
-	SERVER pgserver OPTIONS (TABLE_NAME 'fprt1_p2', partition_by 'a', range '250;500');
+	SERVER pgserver OPTIONS (TABLE_NAME 'fprt1_p2');
 \! env PGOPTIONS='' psql -p ${PG_PORT} contrib_regression -c 'ANALYZE fprt1;'
 \! env PGOPTIONS='' psql -p ${PG_PORT} contrib_regression -c 'ANALYZE fprt1_p1;'
 \! env PGOPTIONS='' psql -p ${PG_PORT} contrib_regression -c 'ANALYZE fprt1_p2;'
@@ -2692,10 +2694,10 @@ CREATE TABLE fprt2 (a int, b int, c varchar) PARTITION BY RANGE(b);
 -- INSERT INTO fprt2_p1 SELECT i, i, to_char(i/50, 'FM0000') FROM generate_series(0, 249, 3) i;
 -- INSERT INTO fprt2_p2 SELECT i, i, to_char(i/50, 'FM0000') FROM generate_series(250, 499, 3) i;
 CREATE FOREIGN TABLE ftprt2_p1 (b int, c varchar, a int)
-	SERVER pgserver OPTIONS (table_name 'fprt2_p1', use_remote_estimate 'true', partition_by 'a', range '0;250');
+	SERVER pgserver OPTIONS (table_name 'fprt2_p1', use_remote_estimate 'true');
 ALTER TABLE fprt2 ATTACH PARTITION ftprt2_p1 FOR VALUES FROM (0) TO (250);
 CREATE FOREIGN TABLE ftprt2_p2 PARTITION OF fprt2 FOR VALUES FROM (250) TO (500)
-	SERVER pgserver OPTIONS (table_name 'fprt2_p2', use_remote_estimate 'true', partition_by 'a', range '250;500');
+	SERVER pgserver OPTIONS (table_name 'fprt2_p2', use_remote_estimate 'true');
 \! env PGOPTIONS='' psql -p ${PG_PORT} contrib_regression -c 'ANALYZE fprt2;'
 \! env PGOPTIONS='' psql -p ${PG_PORT} contrib_regression -c 'ANALYZE fprt2_p1;'
 \! env PGOPTIONS='' psql -p ${PG_PORT} contrib_regression -c 'ANALYZE fprt2_p2;'
@@ -2758,9 +2760,9 @@ CREATE TABLE pagg_tab (a int, b int, c text) PARTITION BY RANGE(a);
 -- INSERT INTO pagg_tab_p3 SELECT i % 30, i % 50, to_char(i/30, 'FM0000') FROM generate_series(1, 3000) i WHERE (i % 30) < 30 and (i % 30) >= 20;
 
 -- Create foreign partitions
-CREATE FOREIGN TABLE fpagg_tab_p1 PARTITION OF pagg_tab FOR VALUES FROM (0) TO (10) SERVER pgserver OPTIONS (table_name 'pagg_tab_p1', partition_by 'a', range '0;10');
-CREATE FOREIGN TABLE fpagg_tab_p2 PARTITION OF pagg_tab FOR VALUES FROM (10) TO (20) SERVER pgserver OPTIONS (table_name 'pagg_tab_p2', partition_by 'a', range '10;20');;
-CREATE FOREIGN TABLE fpagg_tab_p3 PARTITION OF pagg_tab FOR VALUES FROM (20) TO (30) SERVER pgserver OPTIONS (table_name 'pagg_tab_p3', partition_by 'a', range '20;30');;
+CREATE FOREIGN TABLE fpagg_tab_p1 PARTITION OF pagg_tab FOR VALUES FROM (0) TO (10) SERVER pgserver OPTIONS (table_name 'pagg_tab_p1');
+CREATE FOREIGN TABLE fpagg_tab_p2 PARTITION OF pagg_tab FOR VALUES FROM (10) TO (20) SERVER pgserver OPTIONS (table_name 'pagg_tab_p2');;
+CREATE FOREIGN TABLE fpagg_tab_p3 PARTITION OF pagg_tab FOR VALUES FROM (20) TO (30) SERVER pgserver OPTIONS (table_name 'pagg_tab_p3');;
 
 ANALYZE pagg_tab;
 ANALYZE fpagg_tab_p1;
