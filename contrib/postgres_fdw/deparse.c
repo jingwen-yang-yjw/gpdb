@@ -58,6 +58,7 @@
 #include "utils/rel.h"
 #include "utils/syscache.h"
 #include "utils/typcache.h"
+#include "foreign/fdwapi.h"
 
 
 /*
@@ -191,8 +192,6 @@ static void appendAggOrderBy(List *orderList, List *targetList,
 static void appendFunctionName(Oid funcid, deparse_expr_cxt *context);
 static Node *deparseSortGroupClause(Index ref, List *tlist, bool force_colno,
 									deparse_expr_cxt *context);
-
-void add_dummy_filter(StringInfo buf, RelOptInfo *rel, PlannerInfo *root, List *quals);
 
 /*
  * Helper functions
@@ -1090,49 +1089,6 @@ build_tlist_to_deparse(RelOptInfo *foreignrel)
 	}
 
 	return tlist;
-}
-
-/*
- * buf, root, exec_location, root, options
- */
-void add_dummy_filter(StringInfo buf, RelOptInfo *rel, PlannerInfo *root, List *quals)
-{
-	/* Only when mpp_execute = 'all segments' and server_type = 'single', we need to add extra quals. */
-	if (rel->exec_location != FTEXECLOCATION_ALL_SEGMENTS || rel->server_type != FTSERVERTYPE_SINGLE)
-		return;
-
-	if (IS_SIMPLE_REL(rel))
-	{
-		ListCell *lc = NULL;
-		bool need_dummy_quals = false;
-
-		RangeTblEntry *rte = planner_rt_fetch(rel->relid, root);
-		ForeignTable *table = GetForeignTable(rte->relid);
-
-		foreach(lc, table->options)
-		{
-			DefElem    *def = (DefElem *) lfirst(lc);
-			if (strcmp(def->defname, "partition_by") == 0)
-			{
-				need_dummy_quals = true;
-				break;
-			}
-		}
-
-		if (!need_dummy_quals)
-			return;
-
-		if (quals)
-			appendStringInfoString(buf, " AND (TRUE)");
-		else
-			appendStringInfoString(buf, " WHERE (TRUE)");
-	}
-	else if (IS_JOIN_REL(rel) || IS_UPPER_REL(rel))
-	{
-		ereport(ERROR,
-				errmsg("joinrel and upperrel won't add foreign path when mpp_execute = 'all segments' \
-						and server_type = 'single'"));
-	}
 }
 
 /*

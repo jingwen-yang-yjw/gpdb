@@ -33,6 +33,7 @@
 #include "utils/memutils.h"
 #include "utils/rel.h"
 #include "utils/syscache.h"
+#include "parser/parsetree.h"
 
 
 extern Datum pg_options_to_table(PG_FUNCTION_ARGS);
@@ -1107,4 +1108,193 @@ BuildForeignScan(Oid relid, Index scanrelid, List *qual, List *targetlist, Query
 		bms_free(attrs_used);
 	}
 	return fscan;
+}
+
+/*
+ * buf, root, exec_location, root, options
+ */
+void add_dummy_filter(StringInfo buf, RelOptInfo *rel, PlannerInfo *root, List *quals)
+{
+	/* Only when mpp_execute = 'all segments' and server_type = 'single', we need to add extra quals. */
+	if (rel->exec_location != FTEXECLOCATION_ALL_SEGMENTS || rel->server_type != FTSERVERTYPE_SINGLE)
+		return;
+
+	if (IS_SIMPLE_REL(rel))
+	{
+		ListCell *lc = NULL;
+		bool need_dummy_quals = false;
+
+		RangeTblEntry *rte = planner_rt_fetch(rel->relid, root);
+		ForeignTable *table = GetForeignTable(rte->relid);
+
+		foreach(lc, table->options)
+		{
+			DefElem    *def = (DefElem *) lfirst(lc);
+			if (strcmp(def->defname, "partition_by") == 0)
+			{
+				need_dummy_quals = true;
+				break;
+			}
+		}
+
+		if (!need_dummy_quals)
+			return;
+
+		if (quals)
+			appendStringInfoString(buf, " AND (TRUE)");
+		else
+			appendStringInfoString(buf, " WHERE (TRUE)");
+	}
+	else if (IS_JOIN_REL(rel) || IS_UPPER_REL(rel))
+	{
+		ereport(ERROR,
+				errmsg("joinrel and upperrel won't add foreign path when mpp_execute = 'all segments' \
+						and server_type = 'single'"));
+	}
+}
+
+/*
+ * Get real filter according to qe_index.
+ */
+static char* get_real_filter(Oid reloid, int qe_num, int qe_index, List *options)
+{
+	ListCell   *lc = NULL;
+	char *partition_by = NULL, *range = NULL;
+	char *range_from = NULL, *range_to = NULL;
+	char *tmp = NULL;
+	int int_range_from = 0, int_range_to = 0;
+	StringInfoData result_filter;
+	initStringInfo(&result_filter);
+
+	foreach(lc, options)
+	{
+		DefElem    *d = (DefElem *) lfirst(lc);
+
+		if (strcmp(d->defname, "partition_by") == 0)
+			partition_by = pstrdup(defGetString(d));
+		else if (strcmp(d->defname, "range") == 0)
+			range = pstrdup(defGetString(d));
+	}
+
+	if (!partition_by || !range)
+		return result_filter.data;
+
+	/* replace column name if user defines */
+	HeapTuple	tuple = SearchSysCacheAttName(reloid, partition_by);
+	if (!tuple)
+	{
+		ereport(ERROR,
+				errmsg("Current foreign table doesn't have column named %s", partition_by));
+	}
+	Form_pg_attribute 	attTup = (Form_pg_attribute) GETSTRUCT(tuple);
+	List *column_options = GetForeignColumnOptions(reloid, attTup->attnum);
+	char *colname = NULL;
+	foreach(lc, column_options)
+	{
+		DefElem    *def = (DefElem *) lfirst(lc);
+
+		if (strcmp(def->defname, "column_name") == 0)
+		{
+			colname = defGetString(def);
+			break;
+		}
+	}
+	if (colname)
+		partition_by = (char *) quote_identifier(colname);
+	ReleaseSysCache(tuple);
+
+	/* Get range_from and range_to and we only support column with int type. */
+	tmp = strstr(range, ";");
+	range_from = (char *) palloc(strlen(range) - strlen(tmp) + 1);
+	range_to = (char *) palloc(strlen(tmp + 1) + 1);
+	strncpy(range_from, range, strlen(range) - strlen(tmp));
+	strncpy(range_to, tmp + 1, strlen(tmp + 1));
+	int_range_from = strtol(range_from, NULL, 10);
+	int_range_to = strtol(range_to, NULL, 10);
+
+	Assert(qe_index > -1 && qe_index < qe_num);
+	/* Build filter list */
+	if (qe_num == 1)
+	{
+		/* No operation */
+	}
+	else if (qe_num == 2)
+	{
+		if (qe_index == 0)
+			appendStringInfo(&result_filter, "(TRUE)");
+		else if (qe_index == 1)
+			appendStringInfo(&result_filter, "(%s is NULL)", partition_by);
+	}
+	else if (qe_num == 3)
+	{
+		int mid = int_range_from + (int_range_to - int_range_from) / 2;
+		if (qe_index == 0)
+			appendStringInfo(&result_filter, "(%s < %d)", partition_by, mid);
+		else if (qe_index == 1)
+			appendStringInfo(&result_filter, "(%s >= %d)", partition_by, mid);
+		else if (qe_index == 2)
+			appendStringInfo(&result_filter, "(%s is NULL)", partition_by);
+	}
+	else
+	{
+		int interval = (int_range_to - int_range_from) / (qe_num - 3) + 1;
+		int left_val = int_range_from + (qe_index - 1) * interval;
+		if (qe_index == 0)
+			appendStringInfo(&result_filter, "(%s < %d)", partition_by, int_range_from);
+		else if (qe_index == qe_num - 2)
+			appendStringInfo(&result_filter, "(%s >= %d)", partition_by, int_range_to);
+		else if (qe_index == qe_num - 1)
+			appendStringInfo(&result_filter, "(%s is NULL)", partition_by);
+		else if (left_val < int_range_to)
+			appendStringInfo(&result_filter, "((%s >= %d) AND (%s < %d))", partition_by,
+								left_val, partition_by, left_val + interval > int_range_to ? int_range_to : left_val + interval);
+		else
+			appendStringInfo(&result_filter, "(FALSE)");
+	}
+	return result_filter.data;
+}
+
+/*
+ * Using real_filter replaces dummy_filter in the origin_query.
+ * Here dummy_filter is "(TRUE)".
+ */
+static void replace_dummy_filter(char **modified_query, const char *origin_query, const char *real_filter)
+{
+	char *dummy_filter = "(TRUE)";
+	int len_front = 0, len_origin = strlen(origin_query), len_dummy = strlen(dummy_filter), len_real = strlen(real_filter);
+	char *cur_pos = strstr(origin_query, "WHERE");
+
+	if (!cur_pos)
+		return;
+	cur_pos = strstr(cur_pos, "(TRUE)");
+	if (!cur_pos)
+		return;
+
+	*modified_query = (char *) palloc(len_origin + len_real - len_dummy + 1);
+	len_front = len_origin - strlen(cur_pos);
+	strncpy(*modified_query, origin_query, len_front);
+	strcpy(*modified_query + len_front, real_filter);
+	strcpy(*modified_query + len_front + len_real, cur_pos + len_dummy);
+}
+
+/*
+ * Only when exec_location == FTEXECLOCATION_ALL_SEGMENTS and server_type == FTSERVERTYPE_SINGLE,
+ * QE needs modified_query.
+ */
+char *get_modified_query(const char* origin_query, Oid relid, char exec_location, char server_type,
+						 int qe_num, int qe_index, List *options)
+{
+	char *modified_query = NULL;
+	char *real_filter = NULL;
+
+	if (exec_location != FTEXECLOCATION_ALL_SEGMENTS ||
+		server_type != FTSERVERTYPE_SINGLE)
+		return NULL;
+
+	real_filter = get_real_filter(relid, qe_num, qe_index, options);
+	if (!real_filter)
+		return NULL;
+
+	replace_dummy_filter(&modified_query, origin_query, real_filter);
+	return modified_query;
 }
