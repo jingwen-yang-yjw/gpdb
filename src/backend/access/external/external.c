@@ -77,12 +77,24 @@ TokenizeLocationUris(char *uris)
 {
 	char *uri = NULL;
 	List *result = NIL;
+	StringInfoData uri_buf;
+	initStringInfo(&uri_buf);
 
 	Assert(uris != NULL);
 
 	while ((uri = strsep(&uris, "|")) != NULL)
 	{
-		result = lappend(result, makeString(uri));
+		appendStringInfo(&uri_buf, "%s", uri);
+		if (!uris || *uris != '|')
+		{
+			result = lappend(result, makeString(pstrdup(uri_buf.data)));
+			resetStringInfo(&uri_buf);
+		}
+		else
+		{
+			appendStringInfo(&uri_buf, "|");
+			++uris;
+		}
 	}
 
 	return result;

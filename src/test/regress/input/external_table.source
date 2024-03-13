@@ -3758,3 +3758,14 @@ select name::json from ext_fixed_width_table;
 SELECT errmsg, rawdata, rawbytes FROM gp_read_error_log('ext_fixed_width_table') order by cmdtime;
 
 DROP EXTERNAL TABLE ext_fixed_width_table;
+
+-- check uri with special character '|'
+CREATE EXTERNAL TABLE ext_special_uri (
+    c1 int,
+    c2 int) 
+location ('file://@hostname@@abs_srcdir@/data/special|1.tbl', 'file://@hostname@@abs_srcdir@/data/special||2.tbl')
+FORMAT 'text' (delimiter '|');
+SELECT urilocation FROM pg_exttable WHERE reloid = 'ext_special_uri'::regclass::oid;
+SELECT ftoptions FROM pg_foreign_table WHERE ftrelid = 'ext_special_uri'::regclass::oid;
+SELECT * FROM ext_special_uri ORDER BY c1;
+DROP EXTERNAL TABLE ext_special_uri;

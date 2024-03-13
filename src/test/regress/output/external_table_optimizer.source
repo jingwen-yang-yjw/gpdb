@@ -5187,3 +5187,32 @@ SELECT errmsg, rawdata, rawbytes FROM gp_read_error_log('ext_fixed_width_table')
 (6 rows)
 
 DROP EXTERNAL TABLE ext_fixed_width_table;
+-- check uri with special character '|'
+CREATE EXTERNAL TABLE ext_special_uri (
+    c1 int,
+    c2 int) 
+location ('file://@hostname@@abs_srcdir@/data/special|1.tbl', 'file://@hostname@@abs_srcdir@/data/special||2.tbl')
+FORMAT 'text' (delimiter '|');
+SELECT urilocation FROM pg_exttable WHERE reloid = 'ext_special_uri'::regclass::oid;
+                                                                                 urilocation                                                                                  
+------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ {file://@hostname@@abs_srcdir@/data/special|1.tbl,file://@hostname@@abs_srcdir@/data/special||2.tbl}
+(1 row)
+
+SELECT ftoptions FROM pg_foreign_table WHERE ftrelid = 'ext_special_uri'::regclass::oid;
+                                                                                                                                                        ftoptions                                                                                                                                                        
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ {format=text,delimiter=|,"null=\\N","escape=\\",location_uris=file://@hostname@@abs_srcdir@/data/special||1.tbl|file://@hostname@@abs_srcdir@/data/special||||2.tbl,execute_on=ALL_SEGMENTS,log_errors=disable,encoding=UTF8,is_writable=false}
+(1 row)
+
+SELECT * FROM ext_special_uri ORDER BY c1;
+ c1 | c2 
+----+----
+  1 | 11
+  2 | 22
+  3 | 33
+  4 | 44
+  5 | 55
+(5 rows)
+
+DROP EXTERNAL TABLE ext_special_uri;

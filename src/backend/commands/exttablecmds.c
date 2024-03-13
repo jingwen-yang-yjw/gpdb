@@ -329,6 +329,48 @@ DefineExternalRelation(CreateExternalStmt *createExtStmt)
 	}
 }
 
+static char *replaceSubStr(char *originStr, char *oldStr, char *newStr)
+{
+	char *result_str = NULL, *p_result_str = NULL;
+	char *p_origin_str = NULL;
+	char *next_pos = NULL;
+	int count = 0;
+	int len_old_str = 0, len_new_str = 0;
+
+	if(!originStr || !oldStr || !newStr)
+		return NULL;
+
+	len_old_str = strlen(oldStr);
+	len_new_str = strlen(newStr);
+
+	p_origin_str = originStr;
+	while ((next_pos = strstr(p_origin_str, oldStr)) != NULL)
+	{
+		p_origin_str = next_pos + len_old_str;
+		++count;
+	}
+
+	if (count == 0)
+		return NULL;
+
+	result_str = (char *) palloc(strlen(originStr) + (len_new_str - len_old_str) * count + 1);
+
+	p_origin_str = originStr;
+	p_result_str = result_str;
+	while ((next_pos = strstr(p_origin_str, oldStr)) != NULL)
+	{
+		p_result_str = strncpy(p_result_str, p_origin_str, next_pos - p_origin_str);
+		p_result_str = p_result_str + (next_pos - p_origin_str);
+
+		p_result_str = strcpy(p_result_str, newStr);
+		p_result_str = p_result_str + len_new_str;
+
+		p_origin_str = next_pos + len_old_str;
+	}
+	strcpy(p_result_str, p_origin_str);
+	return result_str;
+}
+
 /*
  * Transform the URI string list into a string. While at it we validate the URI
  * strings.
@@ -357,6 +399,7 @@ transformLocationUris(List *locs, bool isweb, bool iswritable)
 		Uri		   *uri;
 		char	   *uri_str_orig;
 		char	   *uri_str_final;
+		char	   *uri_str_final_modified;
 		Value	   *v = lfirst(cell);
 
 		/* get the current URI string from the command */
@@ -462,6 +505,14 @@ transformLocationUris(List *locs, bool isweb, bool iswritable)
 					 errmsg("unsupported use of a directory name in a writable gpfdist(s) external table : \'%s\'",
 							uri_str_final),
 					 errhint("Specify the explicit path and file name to write into.")));
+
+		/* Because we use '|' as separator, so we need to use '||' to replace origin '|' */
+		uri_str_final_modified = replaceSubStr(uri_str_final, "|", "||");
+		if (uri_str_final_modified)
+		{
+			pfree(uri_str_final);
+			uri_str_final = uri_str_final_modified;
+		}
 
 		if (first_uri)
 		{
