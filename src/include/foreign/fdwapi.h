@@ -287,6 +287,7 @@ extern bool IsImportableForeignTable(const char *tablename,
 extern Path *GetExistingLocalJoinPath(RelOptInfo *joinrel);
 extern ForeignScan *BuildForeignScan(Oid relid, Index scanrelid,
 									 List *qual, List *targetlist, Query *query, RangeTblEntry *rte);
+extern int get_hostinfo_index(EState *estate);
 extern void add_dummy_filter(StringInfo buf, RelOptInfo *rel, PlannerInfo *root, List *quals);
 extern char *get_modified_query(const char* origin_query, Oid relid, char exec_location, char server_type,
 						 int qe_num, int qe_index, List *options);

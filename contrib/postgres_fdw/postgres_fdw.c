@@ -1406,24 +1406,6 @@ postgresGetForeignPlan(PlannerInfo *root,
 }
 
 /*
- * Get the order of current QE in current gang, which is
- * used as index to decide which remote server current QE
- * should connect to.
- */
-static int get_hostinfo_index(EState *estate)
-{
-	ExecSlice *current_slice = &estate->es_sliceTable->slices[currentSliceId];
-
-	/* Get the process nth number in current gang */
-	int index = bms_member_index(current_slice->processesMap, qe_identifier);
-
-	if (index < 0)
-		ereport(ERROR, (errmsg("No valid slice number")));
-
-	return index;
-}
-
-/*
  * If specifying option multi_hosts when CREATE SERVER,
  * we will mark it as a scenario with multiple remote servers.
  */
