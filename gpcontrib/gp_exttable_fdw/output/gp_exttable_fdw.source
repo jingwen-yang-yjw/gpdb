@@ -77,7 +77,7 @@ SELECT * FROM tableless_ext_fdw;
 CREATE FOREIGN TABLE ext_special_uri(a int, b int)
 SERVER gp_exttable_server
 OPTIONS (format 'csv', delimiter ',',
-         location_uris 'file://localhost.localdomain/home/gpadmin/gpdb_7/gpcontrib/gp_exttable_fdw/data/spe\\cial1\||file://localhost.localdomain/home/gpadmin/gpdb_7/gpcontrib/gp_exttable_fdw/data/\|special2\\');
+         location_uris 'file://@hostname@@abs_srcdir@/data/spe\\cial1\||file://@hostname@@abs_srcdir@/data/\|special2\\');
 SELECT * FROM ext_special_uri ORDER BY a;
  a | b 
 ---+---
