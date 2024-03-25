@@ -67,3 +67,12 @@ OPTIONS (format 'csv', delimiter ',',
 
 SELECT * FROM tableless_ext_fdw;
 
+-- OK, location URI contains special characters '|' and '\'
+-- Single character '|' is used as delimiter for multiple location URIs.
+-- When using CREATE FOREIGN TABLE syntax, '|' and '\' need to be escaped as '|' --> '\|' and '|' --> '\\'.
+CREATE FOREIGN TABLE ext_special_uri(a int, b int)
+SERVER gp_exttable_server
+OPTIONS (format 'csv', delimiter ',',
+         location_uris 'file://@hostname@@abs_srcdir@/data/spe\\cial1\||file://@hostname@@abs_srcdir@/data/\|special2\\');
+
+SELECT * FROM ext_special_uri ORDER BY a;
