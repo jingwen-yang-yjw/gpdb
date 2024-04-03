@@ -627,6 +627,7 @@ apply_motion(PlannerInfo *root, Plan *plan, Query *query)
 			break;
 
 		case CMD_INSERT:
+			needToAssignDirectDispatchContentIds = root->config->gp_enable_direct_dispatch;
 			if (query->returningList)
 			{
 				bringResultToDispatcher = true;
