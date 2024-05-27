@@ -3648,7 +3648,7 @@ static struct config_enum ConfigureNamesEnum[] =
 	},
 
 	{
-		{"ssl_min_protocol_version", PGC_SIGHUP, CONN_AUTH_SSL,
+		{"ssl_min_protocol_version", PGC_SIGHUP, CONN_AUTH_SECURITY,
 			gettext_noop("Sets the minimum SSL/TLS protocol version to use."),
 			NULL,
 			GUC_SUPERUSER_ONLY
@@ -3660,7 +3660,7 @@ static struct config_enum ConfigureNamesEnum[] =
 	},
 
 	{
-		{"ssl_max_protocol_version", PGC_SIGHUP, CONN_AUTH_SSL,
+		{"ssl_max_protocol_version", PGC_SIGHUP, CONN_AUTH_SECURITY,
 			gettext_noop("Sets the maximum SSL/TLS protocol version to use."),
 			NULL,
 			GUC_SUPERUSER_ONLY
