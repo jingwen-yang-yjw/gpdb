@@ -493,6 +493,8 @@
 		"ssl_crl_file",
 		"ssl_ecdh_curve",
 		"ssl_key_file",
+		"ssl_max_protocol_version",
+		"ssl_min_protocol_version",
 		"ssl_prefer_server_ciphers",
 		"standard_conforming_strings",
 		"stats_queue_level",
