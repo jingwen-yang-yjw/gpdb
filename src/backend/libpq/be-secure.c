@@ -86,7 +86,7 @@ static void close_SSL(Port *);
 static const char *SSLerrmessage(unsigned long ecode);
 
 static int ssl_protocol_version_to_openssl(int v, const char *guc_name);
-#if (OPENSSL_VERSION_NUMBER < 0x10100000L)
+#ifndef SSL_CTX_set_min_proto_version
 static int SSL_CTX_set_min_proto_version(SSL_CTX *ctx, int version);
 static int SSL_CTX_set_max_proto_version(SSL_CTX *ctx, int version);
 #endif
@@ -1333,7 +1333,7 @@ error:
 /*
  * Replacements for APIs present in newer versions of OpenSSL
  */
-#if (OPENSSL_VERSION_NUMBER < 0x10100000L)
+#ifndef SSL_CTX_set_min_proto_version
 
 /*
  * OpenSSL versions that support TLS 1.3 shouldn't get here because they
@@ -1387,5 +1387,5 @@ SSL_CTX_set_max_proto_version(SSL_CTX *ctx, int version)
 	return 1;					/* success */
 }
 
-#endif							/* OPENSSL_VERSION_NUMBER */
+#endif							/* !SSL_CTX_set_min_proto_version */
 #endif   /* USE_SSL */
