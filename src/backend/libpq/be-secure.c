@@ -923,13 +923,22 @@ initialize_SSL(void)
 						SSL_OP_NO_SSLv2 | SSL_OP_NO_SSLv3);
 
 	if (ssl_min_protocol_version)
-		SSL_CTX_set_min_proto_version(SSL_context,
-									  ssl_protocol_version_to_openssl(ssl_min_protocol_version,
-																	  "ssl_min_protocol_version"));
+	{
+		int ssl_ver = ssl_protocol_version_to_openssl(ssl_min_protocol_version,
+													  "ssl_min_protocol_version");
+
+		if (ssl_ver == -1 || !SSL_CTX_set_min_proto_version(SSL_context, ssl_ver))
+			ereport(LOG, (errmsg("could not set minimum SSL protocol version")));
+	}
+
 	if (ssl_max_protocol_version)
-		SSL_CTX_set_max_proto_version(SSL_context,
-									  ssl_protocol_version_to_openssl(ssl_max_protocol_version,
-																	  "ssl_max_protocol_version"));
+	{
+		int ssl_ver = ssl_protocol_version_to_openssl(ssl_max_protocol_version,
+													  "ssl_max_protocol_version");
+
+		if (ssl_ver == -1 || !SSL_CTX_set_max_proto_version(SSL_context, ssl_ver))
+			ereport(LOG, (errmsg("could not set maximum SSL protocol version")));
+	}
 
 	/* disallow SSL session tickets */
 #ifdef SSL_OP_NO_TICKET			/* added in openssl 0.9.8f */
@@ -1305,25 +1314,23 @@ ssl_protocol_version_to_openssl(int v, const char *guc_name)
 #ifdef TLS1_1_VERSION
 			return TLS1_1_VERSION;
 #else
-			goto error;
+			break;
 #endif
 		case PG_TLS1_2_VERSION:
 #ifdef TLS1_2_VERSION
 			return TLS1_2_VERSION;
 #else
-			goto error;
+			break;
 #endif
 		case PG_TLS1_3_VERSION:
 #ifdef TLS1_3_VERSION
 			return TLS1_3_VERSION;
 #else
-			goto error;
+			break;
 #endif
 	}
 
-error:
-	pg_attribute_unused();
-	ereport(ERROR,
+	ereport(LOG,
 			(errmsg("%s setting %s not supported by this build",
 					guc_name,
 					GetConfigOption(guc_name, false, false))));
@@ -1352,13 +1359,30 @@ SSL_CTX_set_min_proto_version(SSL_CTX *ctx, int version)
 
 	if (version > TLS1_VERSION)
 		ssl_options |= SSL_OP_NO_TLSv1;
+	/*
+	 * Some OpenSSL versions define TLS*_VERSION macros but not the
+	 * corresponding SSL_OP_NO_* macro, so in those cases we have to return
+	 * unsuccessfully here.
+	 */
 #ifdef TLS1_1_VERSION
 	if (version > TLS1_1_VERSION)
+	{
+#ifdef SSL_OP_NO_TLSv1_1
 		ssl_options |= SSL_OP_NO_TLSv1_1;
+#else
+		return 0;
+#endif /* SSL_OP_NO_TLSv1_1 */
+	}
 #endif
 #ifdef TLS1_2_VERSION
 	if (version > TLS1_2_VERSION)
+	{
+#ifdef SSL_OP_NO_TLSv1_2
 		ssl_options |= SSL_OP_NO_TLSv1_2;
+#else
+		return 0;
+#endif /* SSL_OP_NO_TLSv1_2 */
+	}
 #endif
 
 	SSL_CTX_set_options(ctx, ssl_options);
@@ -1373,13 +1397,30 @@ SSL_CTX_set_max_proto_version(SSL_CTX *ctx, int version)
 
 	AssertArg(version != 0);
 
+	/*
+	 * Some OpenSSL versions define TLS*_VERSION macros but not the
+	 * corresponding SSL_OP_NO_* macro, so in those cases we have to return
+	 * unsuccessfully here.
+	 */
 #ifdef TLS1_1_VERSION
 	if (version < TLS1_1_VERSION)
+	{
+#ifdef SSL_OP_NO_TLSv1_1
 		ssl_options |= SSL_OP_NO_TLSv1_1;
+#else
+		return 0;
+#endif /* SSL_OP_NO_TLSv1_1 */
+	}
 #endif
 #ifdef TLS1_2_VERSION
 	if (version < TLS1_2_VERSION)
+	{
+#ifdef SSL_OP_NO_TLSv1_2
 		ssl_options |= SSL_OP_NO_TLSv1_2;
+#else
+		return 0;
+#endif /* SSL_OP_NO_TLSv1_2 */
+	}
 #endif
 
 	SSL_CTX_set_options(ctx, ssl_options);
